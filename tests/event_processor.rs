@@ -34,10 +34,10 @@ async fn input_traits ()
 {
 	let mut stream = iter (0..3);
 
-	assert_eq! (take_an_input (&mut stream) . await, Some (0));
-	assert_eq! (take_an_input (&mut stream) . await, Some (1));
-	assert_eq! (take_an_input (&mut stream) . await, Some (2));
-	assert_eq! (take_an_input (&mut stream) . await, None);
+	assert_eq! (transform_an_input (&mut stream) . await, Some (0));
+	assert_eq! (transform_an_input (&mut stream) . await, Some (1));
+	assert_eq! (transform_an_input (&mut stream) . await, Some (2));
+	assert_eq! (transform_an_input (&mut stream) . await, None);
 }
 
 #[event_processor]
