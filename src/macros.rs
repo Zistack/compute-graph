@@ -13,7 +13,7 @@ macro_rules! __feed
 				(
 					tracing::Level::WARN,
 					error = %sink_error,
-					"sink_rejected_item"
+					"sink rejected item"
 				);
 				$crate::exit_status::ShouldTerminateClean::new ((), true)
 			}
@@ -43,6 +43,52 @@ macro_rules! __feed
 	}
 }
 pub use __feed as feed;
+
+#[macro_export]
+macro_rules! __send
+{
+	($sink: ident, $item: expr) =>
+	{
+		match <_ as futures::SinkExt <_>>::send (&mut $sink, $item) . await
+		{
+			std::result::Result::Ok (()) =>
+				$crate::exit_status::ShouldTerminateClean::new ((), false),
+			std::result::Result::Err (sink_error) =>
+			{
+				tracing::event!
+				(
+					tracing::Level::WARN,
+					error = %sink_error,
+					"sink rejected item"
+				);
+				$crate::exit_status::ShouldTerminateClean::new ((), true)
+			}
+		}
+	};
+	($sink: ident ?, $item: expr) =>
+	{
+		match <_ as futures::SinkExt <_>>::send (&mut $sink, $item) . await
+		{
+			std::result::Result::Ok (()) =>
+				$crate::exit_status::ShouldTerminateWithStatus::new ((), None),
+			std::result::Result::Err (sink_error) =>
+			{
+				tracing::event!
+				(
+					tracing::Level::ERROR,
+					error = %sink_error,
+					"sink rejected item"
+				);
+				$crate::exit_status::ShouldTerminateWithStatus::new
+				(
+					(),
+					Some ($crate::exit_status::ExitStatus::Spurious)
+				)
+			}
+		}
+	}
+}
+pub use __send as send;
 
 #[macro_export]
 macro_rules! __next
