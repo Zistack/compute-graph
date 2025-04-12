@@ -38,7 +38,7 @@ impl Parse for JoinServicesInput
 fn join_services_inner
 (
 	shutdown_expr: Option <Expr>,
-	service_exprs: Punctuated <Expr, Token! [,]>
+	mut service_exprs: Punctuated <Expr, Token! [,]>
 )
 -> proc_macro2::TokenStream
 {
@@ -54,6 +54,11 @@ fn join_services_inner
 			},
 		)
 	);
+
+	if ! service_exprs . empty_or_trailing ()
+	{
+		service_exprs . push_punct (<Token! [,]>::default ());
+	}
 
 	let service_idx: Vec <Index> = (0..service_exprs . len ())
 		. map (|i| i . into ())
@@ -79,7 +84,7 @@ fn join_services_inner
 				std::result::Result::Ok (_) =>
 				(
 					#(<_ as compute_graph::service_handle::ServiceHandle <_>>::take_output (&mut services . #service_idx)
-						. expect ("expected completed service")),*
+						. expect ("expected completed service"),)*
 				),
 				std::result::Result::Err (()) =>
 				{
