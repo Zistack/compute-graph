@@ -9,7 +9,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::PollSender;
 use tungstenite::Message;
 
-use crate::{expand_streams, service, join_services, feed};
+use crate::{expand_streams, service, join_services, send};
 use crate::exit_status::{ExitStatus, ServiceExitStatus, WithStatus};
 
 use super::io_format::{InputFormat, OutputFormat};
@@ -17,9 +17,6 @@ use super::shuttle::*;
 use super::keepalive::*;
 
 use crate as compute_graph;
-
-// My feed! macros don't attempt to flush the stream.  I could manually add
-// flush calls, or I could make an analogous send! macro.
 
 #[expand_streams]
 #[service (shutdown = shutdown)]
@@ -83,7 +80,7 @@ where
 	{
 		let (mut websocket_sink, _) = input_report . split ();
 
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
@@ -125,7 +122,7 @@ where
 	{
 		let (mut websocket_sink, _) = input_report . split ();
 
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
@@ -179,7 +176,7 @@ where
 	{
 		let (mut websocket_sink, _) = keepalive_report . split ();
 
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
@@ -210,7 +207,7 @@ where
 	}
 	else
 	{
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
@@ -264,7 +261,7 @@ where
 	{
 		let (mut websocket_sink, _) = input_report . split ();
 
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
@@ -303,7 +300,7 @@ where
 	{
 		let (mut websocket_sink, _) = input_report . split ();
 
-		feed! (websocket_sink, Message::Close (None));
+		send! (websocket_sink, Message::Close (None));
 
 		WithStatus::from (ExitStatus::Clean)
 	}
