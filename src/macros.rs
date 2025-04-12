@@ -1,26 +1,28 @@
 #[macro_export]
 macro_rules! __join_services
 {
-	($($service: expr),*) =>
+	($(?$shutdown: expr,)? $($service: expr),*) =>
 	{
 		match tokio::try_join!
 		(
-			$($services
+			$(async move { $shutdown . await; Err (()) },)?
+			$($service
 				. exit_status ()
-				. expect ("expected service handle that could still produce an output")),*
+				. expect ("expected service handle that could still produce an output")
+				. into_result ()),*
 		)
 		{
 			std::result::Result::Ok (_) =>
 			(
-				$($services
+				$($service
 					. take_output ()
 					. expect ("expected_completed_service")),*
 			),
-			std::result::Result::Err () =>
+			std::result::Result::Err (()) =>
 			{
-				$($services . shutdown ();)*
+				$($service . shutdown ();)*
 
-				tokio::join ($($services),*)
+				tokio::join! ($($service),*)
 			}
 		}
 	}
