@@ -3,7 +3,7 @@ macro_rules! __feed
 {
 	($sink: ident, $item: expr) =>
 	{
-		match $sink . feed ($item) . await
+		match <_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
 		{
 			std::result::Result::Ok (()) =>
 				$crate::exit_status::ShouldTerminateClean::new ((), false),
@@ -21,7 +21,7 @@ macro_rules! __feed
 	};
 	($sink: ident ?, $item: expr) =>
 	{
-		match $sink . feed ($item) . await
+		match <_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
 		{
 			std::result::Result::Ok (()) =>
 				$crate::exit_status::ShouldTerminateWithStatus::new ((), None),
@@ -49,18 +49,20 @@ macro_rules! __next
 {
 	($stream: ident -> $item: ident => $handler: expr) =>
 	{
-		match $stream . next () . await
+		match <_ as futures::StreamExt>::next ($stream) . await
 		{
-			std::option::Option::Some ($item) => { $handler } . into (),
+			std::option::Option::Some ($item) =>
+				<_ as std::convert::Into <_>>::into ($handler),
 			std::option::Option::None =>
 				$crate::exit_status::ShouldTerminateClean::new ((), true)
 		}
 	};
 	($stream: ident -> $item: ident ? => $handler: expr) =>
 	{
-		match $stream . next () . await
+		match <_ as futures::StreamExt>::next ($stream) . await
 		{
-			std::option::Option::Some ($item) => { $handler } . into (),
+			std::option::Option::Some ($item) =>
+				<_ as std::convert::Into <_>>::into ($handler),
 			std::option::Option::None =>
 				$crate::exit_status::ShouldTerminateWithStatus::new
 				(
@@ -84,7 +86,7 @@ macro_rules! __return_if_should_terminate
 			let should_terminate = $e;
 			if should_terminate . should_terminate ()
 			{
-				return should_terminate . into ();
+				return <_ as std::convert::Into <_>>::into (should_terminate)
 			}
 		}
 	}
