@@ -107,7 +107,7 @@ pub async fn keepalive <PIS, POS>
 }
 
 #[expand_streams]
-pub async fn ping_direct_input <PIS, WS>
+pub async fn ping_direct_pongs <PIS, WS>
 (
 	shutdown: &mut Receiver <()>,
 	pings: output! (PIS <- Bytes),
@@ -208,7 +208,7 @@ pub async fn ping_direct_input <PIS, WS>
 
 #[expand_streams]
 #[service (shutdown = shutdown)]
-pub async fn keepalive_direct_input <PIS, WS>
+pub async fn keepalive_direct_pongs <PIS, WS>
 (
 	pings: output! (PIS <- Bytes),
 	websocket: input! (WS -> Result <Message>),
@@ -230,7 +230,7 @@ pub async fn keepalive_direct_input <PIS, WS>
 			let ping_bytes = Bytes::from_owner (ping_counter . to_be_bytes ());
 			ping_counter += 1;
 
-			ping_direct_input
+			ping_direct_pongs
 			(
 				&mut shutdown,
 				&mut pings,
@@ -244,7 +244,7 @@ pub async fn keepalive_direct_input <PIS, WS>
 }
 
 #[expand_streams]
-pub async fn ping_direct_output <WS, POS>
+pub async fn ping_direct_pings <WS, POS>
 (
 	shutdown: &mut Receiver <()>,
 	websocket: output! (WS <- Message),
@@ -293,7 +293,7 @@ pub async fn ping_direct_output <WS, POS>
 
 #[expand_streams]
 #[service (shutdown = shutdown)]
-pub async fn keepalive_direct_output <WS, POS>
+pub async fn keepalive_direct_pings <WS, POS>
 (
 	websocket: output! (WS <- Message),
 	pongs: input! (POS -> Bytes),
@@ -315,7 +315,7 @@ pub async fn keepalive_direct_output <WS, POS>
 			let ping_bytes = Bytes::from_owner (ping_counter . to_be_bytes ());
 			ping_counter += 1;
 
-			ping_direct_output
+			ping_direct_pings
 			(
 				&mut shutdown,
 				&mut websocket,
