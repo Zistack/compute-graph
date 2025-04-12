@@ -114,6 +114,8 @@ fn gen_signallable_service (shutdown_object: Ident, function: ItemFn)
 fn service_inner (shutdown_object: Option <ShutdownObject>, mut function: ItemFn)
 -> Result <proc_macro2::TokenStream>
 {
+	function . sig . asyncness = None;
+
 	for fn_arg in &function . sig . inputs
 	{
 		let arg_type = match fn_arg
