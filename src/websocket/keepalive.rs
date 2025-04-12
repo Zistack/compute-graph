@@ -3,6 +3,7 @@ use tokio::time::{Duration, MissedTickBehavior, interval, sleep};
 use tokio::sync::oneshot::Receiver;
 use tracing::{Level, event};
 use tungstenite::Message;
+use tungstenite::error::Result;
 
 use crate::{
 	expand_streams,
@@ -110,7 +111,7 @@ pub async fn ping_direct_input <PIS, WS>
 (
 	shutdown: &mut Receiver <()>,
 	pings: output! (PIS <- Bytes),
-	websocket: input! (WS -> Message),
+	websocket: input! (WS -> Result <Message>),
 	ping_bytes: Bytes,
 	ping_timeout: Duration
 )
@@ -126,7 +127,18 @@ pub async fn ping_direct_input <PIS, WS>
 		_ = shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
 		websocket -> message => match message
 		{
-			Message::Text (utf8_bytes) =>
+			Err (ws_error) =>
+			{
+				event!
+				(
+					Level::ERROR,
+					%ws_error,
+					"websocket connection encountered an error"
+				);
+
+				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			}
+			Ok (Message::Text (utf8_bytes)) =>
 			{
 				event!
 				(
@@ -137,7 +149,7 @@ pub async fn ping_direct_input <PIS, WS>
 
 				ShouldTerminateWithStatus::from (None)
 			},
-			Message::Binary (bytes) =>
+			Ok (Message::Binary (bytes)) =>
 			{
 				event!
 				(
@@ -148,8 +160,8 @@ pub async fn ping_direct_input <PIS, WS>
 
 				ShouldTerminateWithStatus::from (None)
 			},
-			Message::Ping (_) => ShouldTerminateWithStatus::from (None),
-			Message::Pong (pong_bytes) => if pong_bytes != ping_bytes
+			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
+			Ok (Message::Pong (pong_bytes)) => if pong_bytes != ping_bytes
 			{
 				event!
 				(
@@ -165,7 +177,7 @@ pub async fn ping_direct_input <PIS, WS>
 			{
 				ShouldTerminateWithStatus::from (None)
 			},
-			Message::Close (close_frame) =>
+			Ok (Message::Close (close_frame)) =>
 			{
 				event!
 				(
@@ -176,7 +188,7 @@ pub async fn ping_direct_input <PIS, WS>
 
 				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
 			},
-			Message::Frame (_) => unreachable!
+			Ok (Message::Frame (_)) => unreachable!
 			(
 				"websocket stream returned raw frame"
 			)
@@ -199,7 +211,7 @@ pub async fn ping_direct_input <PIS, WS>
 pub async fn keepalive_direct_input <PIS, WS>
 (
 	pings: output! (PIS <- Bytes),
-	websocket: input! (WS -> Message),
+	websocket: input! (WS -> Result <Message>),
 	ping_interval: Duration,
 	ping_timeout: Duration
 )
