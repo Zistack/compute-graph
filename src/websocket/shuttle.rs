@@ -200,3 +200,80 @@ where F: OutputFormat
 	}
 		. with_value (websocket)
 }
+
+#[expand_streams]
+#[service (shutdown = shutdown)]
+pub async fn drain_output <WS>
+(
+	websocket: input! (WS -> Result <Message>)
+)
+-> WithStatus <WS>
+{
+	event_loop_fallible!
+	{
+		_ = &mut shutdown => ExitStatus::Clean,
+		websocket -> message? => match message
+		{
+			Err (ws_error) =>
+			{
+				event!
+				(
+					Level::ERROR,
+					%ws_error,
+					"websocket connection encountered an error"
+				);
+
+				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			},
+			Ok (Message::Text (utf8_bytes)) =>
+			{
+				event!
+				(
+					Level::INFO,
+					?utf8_bytes,
+					"received superfluous text message"
+				);
+
+				ShouldTerminateWithStatus::from (None)
+			},
+			Ok (Message::Binary (bytes)) =>
+			{
+				event!
+				(
+					Level::INFO,
+					?bytes,
+					"received superfluous binary message"
+				);
+
+				ShouldTerminateWithStatus::from (None)
+			},
+			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
+			Ok (Message::Pong(bytes)) =>
+			{
+				event!
+				(
+					Level::WARN,
+					"received unsolicited pong frame"
+				);
+
+				ShouldTerminateWithStatus::from (None)
+			},
+			Ok (Message::Close (close_frame)) =>
+			{
+				event!
+				(
+					Level::INFO,
+					?close_frame,
+					"websocket connection was closed before shutdown"
+				);
+
+				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			},
+			Ok (Message::Frame (_)) => unreachable!
+			(
+				"websocket stream returned a raw frame"
+			)
+		}
+	}
+		. with_value (websocket)
+}
