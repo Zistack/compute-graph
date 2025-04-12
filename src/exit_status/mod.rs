@@ -25,11 +25,51 @@ impl Default for ExitStatus
 	}
 }
 
+impl ExitStatus
+{
+	fn into_result (self) -> Result <(), ()>
+	{
+		match self
+		{
+			ExitStatus::Clean => Ok (()),
+			ExitStatus::Spurious => Err (())
+		}
+	}
+
+	fn is_clean (&self) -> bool
+	{
+		match self
+		{
+			ExitStatus::Clean => true,
+			ExitStatus::Spurious => false
+		}
+	}
+
+	fn is_spurious (&self) -> bool
+	{
+		match self
+		{
+			ExitStatus::Clean => false,
+			ExitStatus::Spurious => true
+		}
+	}
+}
+
 pub trait ServiceExitStatus
 {
 	type Value;
 
 	fn exit_status (&self) -> ExitStatus;
+
+	fn status_clean (&self) -> bool
+	{
+		self . exit_status () . is_clean ()
+	}
+
+	fn status_spurious (&self) -> bool
+	{
+		self . exit_status () . is_spurious ()
+	}
 }
 
 pub trait ServiceShouldTerminate
