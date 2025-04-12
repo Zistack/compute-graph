@@ -45,7 +45,14 @@ fn join_services_inner
 	let shutdown_branch = shutdown_expr . map
 	(
 		|shutdown_expr|
-		quote! (async move { #shutdown_expr . await; Err (()) },)
+		quote!
+		(
+			async move
+			{
+				let _ = #shutdown_expr . await;
+				std::result::Result::<(), ()>::Err (())
+			},
+		)
 	);
 
 	let service_idx: Vec <Index> = (0..service_exprs . len ())
@@ -55,7 +62,7 @@ fn join_services_inner
 	quote!
 	{
 		{
-			let services = (#service_exprs);
+			let mut services = (#service_exprs);
 
 			match tokio::try_join!
 			(
