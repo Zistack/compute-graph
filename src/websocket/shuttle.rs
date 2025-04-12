@@ -248,11 +248,12 @@ pub async fn drain_output <WS>
 				ShouldTerminateWithStatus::from (None)
 			},
 			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
-			Ok (Message::Pong(bytes)) =>
+			Ok (Message::Pong (bytes)) =>
 			{
 				event!
 				(
 					Level::WARN,
+					?bytes,
 					"received unsolicited pong frame"
 				);
 
