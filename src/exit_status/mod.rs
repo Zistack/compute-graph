@@ -27,7 +27,7 @@ impl Default for ExitStatus
 
 impl ExitStatus
 {
-	fn into_result (self) -> Result <(), ()>
+	pub fn into_result (self) -> Result <(), ()>
 	{
 		match self
 		{
@@ -36,7 +36,7 @@ impl ExitStatus
 		}
 	}
 
-	fn is_clean (&self) -> bool
+	pub fn is_clean (&self) -> bool
 	{
 		match self
 		{
@@ -45,7 +45,7 @@ impl ExitStatus
 		}
 	}
 
-	fn is_spurious (&self) -> bool
+	pub fn is_spurious (&self) -> bool
 	{
 		match self
 		{
