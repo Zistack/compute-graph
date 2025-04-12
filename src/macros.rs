@@ -1,35 +1,4 @@
 #[macro_export]
-macro_rules! __join_services
-{
-	($(?$shutdown: expr,)? $($service: expr),*) =>
-	{
-		match tokio::try_join!
-		(
-			$(async move { $shutdown . await; Err (()) },)?
-			$($service
-				. exit_status ()
-				. expect ("expected service handle that could still produce an output")
-				. into_result ()),*
-		)
-		{
-			std::result::Result::Ok (_) =>
-			(
-				$($service
-					. take_output ()
-					. expect ("expected_completed_service")),*
-			),
-			std::result::Result::Err (()) =>
-			{
-				$($service . shutdown ();)*
-
-				tokio::join! ($($service),*)
-			}
-		}
-	}
-}
-pub use __join_services as join_services;
-
-#[macro_export]
 macro_rules! __feed
 {
 	($sink: ident, $item: expr) =>

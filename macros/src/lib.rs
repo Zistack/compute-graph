@@ -49,3 +49,11 @@ pub fn event_loop_fallible (input: TokenStream) -> TokenStream
 {
 	event_loop_fallible::event_loop_fallible_impl (input)
 }
+
+mod join_services;
+
+#[proc_macro]
+pub fn join_services (input: TokenStream) -> TokenStream
+{
+	join_services::join_services_impl (input)
+}
