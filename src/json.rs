@@ -3,12 +3,12 @@ use std::fmt::Debug;
 use serde::{Serialize, Deserialize};
 use tracing::{Level, event};
 
-use crate::{service, event_processor, event_loop, feed};
+use crate::{service, expand_streams, event_loop, feed};
 use crate::exit_status::AlwaysClean;
 
 use crate as compute_graph;
 
-#[event_processor]
+#[expand_streams]
 #[service]
 pub async fn json_serialize <IS, OS>
 (
@@ -33,7 +33,7 @@ pub async fn json_serialize <IS, OS>
 	}
 }
 
-#[event_processor]
+#[expand_streams]
 #[service]
 pub async fn json_deserialize <IS, OS, OI>
 (

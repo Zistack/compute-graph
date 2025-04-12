@@ -97,13 +97,13 @@ enum MarkerSpec
 	}
 }
 
-struct EventProcessorMarkers
+struct ExpandStreamsMarkers
 {
 	input_marker: Ident,
 	output_marker: Ident
 }
 
-impl Parse for EventProcessorMarkers
+impl Parse for ExpandStreamsMarkers
 {
 	fn parse (input: ParseStream <'_>) -> Result <Self>
 	{
@@ -168,7 +168,7 @@ impl Parse for EventProcessorMarkers
 
 fn compute_replacement_type
 (
-	event_processor_markers: &EventProcessorMarkers,
+	expand_streams_markers: &ExpandStreamsMarkers,
 	generics: &mut Generics,
 	arg_type: &Type
 )
@@ -181,7 +181,7 @@ fn compute_replacement_type
 	};
 
 	if type_macro . mac . path . get_ident ()
-		== Some (&event_processor_markers . input_marker)
+		== Some (&expand_streams_markers . input_marker)
 	{
 		let InputPortSpec {input_param, input_item_spec, ..} =
 			parse2 (type_macro . mac . tokens . clone ())?;
@@ -229,7 +229,7 @@ fn compute_replacement_type
 	}
 
 	if type_macro . mac . path . get_ident ()
-		== Some (&event_processor_markers . output_marker)
+		== Some (&expand_streams_markers . output_marker)
 	{
 		let OutputPortSpec
 		{
@@ -282,9 +282,9 @@ fn compute_replacement_type
 	return Ok (None);
 }
 
-fn event_processor_inner
+fn expand_streams_inner
 (
-	event_processor_markers: EventProcessorMarkers,
+	expand_streams_markers: ExpandStreamsMarkers,
 	mut function: ItemFn
 )
 -> Result <proc_macro2::TokenStream>
@@ -305,7 +305,7 @@ fn event_processor_inner
 
 		if let Some (replacement_type) = compute_replacement_type
 		(
-			&event_processor_markers,
+			&expand_streams_markers,
 			&mut function . sig . generics,
 			&*pat_type . ty
 		)?
@@ -318,27 +318,27 @@ fn event_processor_inner
 	Ok (function . into_token_stream ())
 }
 
-fn try_event_processor_impl
+fn try_expand_streams_impl
 (
 	attr: proc_macro::TokenStream,
 	item: proc_macro::TokenStream
 )
 -> Result <proc_macro2::TokenStream>
 {
-	let event_processor_markers = parse (attr)?;
+	let expand_streams_markers = parse (attr)?;
 	let input_function = parse (item)?;
 
-	event_processor_inner (event_processor_markers, input_function)
+	expand_streams_inner (expand_streams_markers, input_function)
 }
 
-pub fn event_processor_impl
+pub fn expand_streams_impl
 (
 	attr: proc_macro::TokenStream,
 	item: proc_macro::TokenStream
 )
 -> proc_macro::TokenStream
 {
-	try_event_processor_impl (attr, item)
+	try_expand_streams_impl (attr, item)
 		. unwrap_or_else (Error::into_compile_error)
 		. into ()
 }

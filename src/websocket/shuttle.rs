@@ -2,14 +2,14 @@ use bytes::Bytes;
 use tracing::{Level, event};
 use tungstenite::Message;
 
-use crate::{event_processor, service, event_loop_fallible, feed};
+use crate::{expand_streams, service, event_loop_fallible, feed};
 use crate::exit_status::{ExitStatus, WithStatus, ShouldTerminateWithStatus};
 
 use super::io_format::{InputFormat, OutputFormat};
 
 use crate as compute_graph;
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn shuttle_input_with_pings <F, IS, PS, WS>
 (
@@ -31,7 +31,7 @@ where F: InputFormat
 		. with_value (websocket)
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn shuttle_input <F, IS, WS>
 (
@@ -49,7 +49,7 @@ where F: InputFormat
 		. with_value (websocket)
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn shuttle_output_with_pongs <F, WS, OS, PS>
 (
@@ -109,7 +109,7 @@ where F: OutputFormat
 		. with_value (websocket)
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn shuttle_output <F, WS, OS>
 (

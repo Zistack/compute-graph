@@ -2,12 +2,12 @@ use proc_macro::TokenStream;
 
 mod event_pattern;
 
-mod event_processor;
+mod expand_streams;
 
 #[proc_macro_attribute]
-pub fn event_processor (attr: TokenStream, item: TokenStream) -> TokenStream
+pub fn expand_streams (attr: TokenStream, item: TokenStream) -> TokenStream
 {
-	event_processor::event_processor_impl (attr, item)
+	expand_streams::expand_streams_impl (attr, item)
 }
 
 mod service;

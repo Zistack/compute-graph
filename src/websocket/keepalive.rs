@@ -5,7 +5,7 @@ use tracing::{Level, event};
 use tungstenite::Message;
 
 use crate::{
-	event_processor,
+	expand_streams,
 	service,
 	select_fallible,
 	event_loop_fallible,
@@ -21,7 +21,7 @@ use crate::exit_status::{
 
 use crate as compute_graph;
 
-#[event_processor]
+#[expand_streams]
 pub async fn ping <PIS, POS>
 (
 	shutdown: &mut Receiver <()>,
@@ -69,7 +69,7 @@ pub async fn ping <PIS, POS>
 	}
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn keepalive <PIS, POS>
 (
@@ -105,7 +105,7 @@ pub async fn keepalive <PIS, POS>
 	}
 }
 
-#[event_processor]
+#[expand_streams]
 pub async fn ping_direct_input <PIS, WS>
 (
 	shutdown: &mut Receiver <()>,
@@ -194,7 +194,7 @@ pub async fn ping_direct_input <PIS, WS>
 	}
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn keepalive_direct_input <PIS, WS>
 (
@@ -231,7 +231,7 @@ pub async fn keepalive_direct_input <PIS, WS>
 		. with_value (websocket)
 }
 
-#[event_processor]
+#[expand_streams]
 pub async fn ping_direct_output <WS, POS>
 (
 	shutdown: &mut Receiver <()>,
@@ -279,7 +279,7 @@ pub async fn ping_direct_output <WS, POS>
 	}
 }
 
-#[event_processor]
+#[expand_streams]
 #[service (shutdown = shutdown)]
 pub async fn keepalive_direct_output <WS, POS>
 (

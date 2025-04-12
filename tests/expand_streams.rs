@@ -1,8 +1,8 @@
-use compute_graph::event_processor;
+use compute_graph::expand_streams;
 use futures::sink::drain;
 use futures::stream::iter;
 
-#[event_processor]
+#[expand_streams]
 async fn take_an_input <IS, II> (input_stream: input! (IS -> II))
 -> Option <II>
 {
@@ -21,7 +21,7 @@ async fn input_type ()
 	assert_eq! (take_an_input (&mut stream) . await, None);
 }
 
-#[event_processor]
+#[expand_streams]
 async fn transform_an_input <IS> (input_stream: input! (IS -> impl Into <i128>))
 -> Option <i128>
 {
@@ -40,7 +40,7 @@ async fn input_traits ()
 	assert_eq! (transform_an_input (&mut stream) . await, None);
 }
 
-#[event_processor]
+#[expand_streams]
 async fn feed_an_output <OS, OI>
 (
 	output_stream: output! (OS <- OI),
@@ -61,7 +61,7 @@ async fn output_type ()
 	feed_an_output (&mut sink, 2) . await;
 }
 
-#[event_processor]
+#[expand_streams]
 async fn feed_an_output_with_trait <OS, OI>
 (
 	output_stream: output! (OS <- OI: std::fmt::Display),
@@ -83,7 +83,7 @@ async fn output_traits ()
 	feed_an_output_with_trait (&mut sink, 2) . await;
 }
 
-#[event_processor]
+#[expand_streams]
 async fn assert_and_pass <IS, OS>
 (
 	source: input! (IS -> u32),
