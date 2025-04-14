@@ -11,7 +11,12 @@ fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
 	{
 		{
 			let term_status: compute_graph::exit_status::ShouldTerminateClean =
-				{ #handler } . into ();
+			<
+				_ as std::convert::Into
+				<
+					compute_graph::exit_status::ShouldTerminateClean
+				>
+			>::into (#handler);
 
 			if term_status . should_terminate
 			{
@@ -46,7 +51,8 @@ fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 		#item = #stream . next () => match #item
 		{
 			std::option::Option::Some (#item) => #implemented_handler,
-			std::option::Option::None => break compute_graph::exit_status::AlwaysClean::new (())
+			std::option::Option::None =>
+				break compute_graph::exit_status::AlwaysClean::new (())
 		}
 	};
 

@@ -24,7 +24,13 @@ fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 	{
 		#item = #stream . next () => match #item
 		{
-			std::option::Option::Some (#item) => { #handler } . into (),
+			std::option::Option::Some (#item) =>
+			<
+				_ as std::convert::Into
+				<
+					compute_graph::exit_status::ShouldTerminateWithStatus
+				>
+			>::into (#handler),
 			std::option::Option::None =>
 				compute_graph::exit_status::ShouldTerminateWithStatus::new
 				(
@@ -42,7 +48,13 @@ fn implement_future_pattern (future_pattern: FutureEventPattern)
 
 	quote!
 	{
-		#value = #future => {{ #handler } . into () }
+		#value = #future =>
+		<
+			_ as std::convert::Into
+			<
+				compute_graph::exit_status::ShouldTerminateWithStatus
+			>
+		>::into (#handler)
 	}
 }
 

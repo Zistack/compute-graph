@@ -12,7 +12,12 @@ fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
 		{
 			let term_status:
 				compute_graph::exit_status::ShouldTerminateWithStatus =
-				{ #handler } . into ();
+			<
+				_ as std::convert::Into
+				<
+					compute_graph::exit_status::ShouldTerminateWithStatus
+				>
+			>::into (#handler);
 
 			if let std::option::Option::Some (exit_status) =
 				term_status . should_terminate_status
