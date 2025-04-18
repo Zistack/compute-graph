@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use tokio::sync::{oneshot, watch};
 use tokio::time::{Duration, sleep};
 
@@ -8,15 +10,15 @@ use crate::service_state::ServiceState;
 
 use crate as compute_graph;
 
-async fn replace_down_service <C, S, R>
+async fn replace_down_service <C, S>
 (
 	constructor_handle: C,
 	service_handle: &mut S,
 	state_channel: &mut watch::Sender <ServiceState>
 )
 where
-	C: ServiceHandle <AlwaysClean <S>> + Unpin,
-	S: ServiceHandle <R>
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
+	S: ServiceHandle
 {
 	let new_service_handle = constructor_handle . await . into_value ();
 
@@ -29,15 +31,15 @@ where
 	old_service_handle . await;
 }
 
-async fn replace_service <C, S, R>
+async fn replace_service <C, S>
 (
 	mut constructor_handle: C,
 	service_handle: &mut S,
 	state_channel: &mut watch::Sender <ServiceState>
 )
 where
-	C: ServiceHandle <AlwaysClean <S>> + Unpin,
-	S: ServiceHandle <R> + Unpin
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
+	S: ServiceHandle + Unpin
 {
 	select!
 	{
@@ -67,7 +69,7 @@ where
 }
 
 #[service]
-pub async fn robust_service <F, C, S, R>
+pub async fn robust_service <F, C, S>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>
@@ -75,9 +77,9 @@ pub async fn robust_service <F, C, S, R>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle <AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle <R> + Send + Unpin,
-	R: Send
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	S: ServiceHandle + Send + Unpin,
+	S::Output: Send
 {
 	let mut service_handle = constructor () . await . into_value ();
 
@@ -100,7 +102,7 @@ where
 }
 
 #[service]
-pub async fn robust_service_with_preemptive_replacement <F, C, S, R>
+pub async fn robust_service_with_preemptive_replacement <F, C, S>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>,
@@ -109,9 +111,9 @@ pub async fn robust_service_with_preemptive_replacement <F, C, S, R>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle <AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle <R> + Send + Unpin,
-	R: Send
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	S: ServiceHandle + Send + Unpin,
+	S::Output: Send
 {
 	let mut service_handle = constructor () . await . into_value ();
 
@@ -139,7 +141,7 @@ where
 	}
 }
 
-async fn replace_down_service_with_shutdown <C, S, R>
+async fn replace_down_service_with_shutdown <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
 	mut constructor_handle: C,
@@ -148,8 +150,8 @@ async fn replace_down_service_with_shutdown <C, S, R>
 )
 -> ShouldTerminateClean
 where
-	C: ServiceHandle <AlwaysClean <S>> + Unpin,
-	S: ServiceHandle <R>
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
+	S: ServiceHandle
 {
 	select!
 	{
@@ -168,7 +170,7 @@ where
 	}
 }
 
-async fn replace_service_with_shutdown <C, S, R>
+async fn replace_service_with_shutdown <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
 	mut constructor_handle: C,
@@ -177,8 +179,8 @@ async fn replace_service_with_shutdown <C, S, R>
 )
 -> ShouldTerminateClean
 where
-	C: ServiceHandle <AlwaysClean <S>> + Unpin,
-	S: ServiceHandle <R> + Unpin
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
+	S: ServiceHandle + Unpin
 {
 	select!
 	{
@@ -210,7 +212,7 @@ where
 }
 
 #[service (shutdown = shutdown)]
-pub async fn robust_service_with_shutdown <F, C, S, R>
+pub async fn robust_service_with_shutdown <F, C, S>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>
@@ -218,9 +220,9 @@ pub async fn robust_service_with_shutdown <F, C, S, R>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle <AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle <R> + Send + Unpin,
-	R: Send
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	S: ServiceHandle + Send + Unpin,
+	S::Output: Send
 {
 	let mut service_handle = tokio::select!
 	{
@@ -255,7 +257,7 @@ where
 }
 
 #[service (shutdown = shutdown)]
-pub async fn robust_service_with_shutdown_and_preemptive_replacement <F, C, S, R>
+pub async fn robust_service_with_shutdown_and_preemptive_replacement <F, C, S>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>,
@@ -264,9 +266,9 @@ pub async fn robust_service_with_shutdown_and_preemptive_replacement <F, C, S, R
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle <AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle <R> + Send + Unpin,
-	R: Send
+	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	S: ServiceHandle + Send + Unpin,
+	S::Output: Send
 {
 	let mut service_handle = tokio::select!
 	{

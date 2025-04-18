@@ -45,7 +45,7 @@ impl <T> SignallableServiceHandle <T>
 	}
 }
 
-impl <T> ServiceHandle <T> for SignallableServiceHandle <T>
+impl <T> ServiceHandle for SignallableServiceHandle <T>
 where T: Unpin + ServiceExitStatus
 {
 	fn shutdown (&mut self)
@@ -77,7 +77,7 @@ where T: Unpin + ServiceExitStatus
 		Some (exit_status)
 	}
 
-	fn take_output (&mut self) -> Option <T>
+	fn take_output (&mut self) -> Option <<Self as Future>::Output>
 	{
 		match std::mem::replace (self, Self::Taken)
 		{

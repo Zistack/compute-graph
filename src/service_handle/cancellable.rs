@@ -41,7 +41,7 @@ impl <T> CancellableServiceHandle <T>
 	}
 }
 
-impl <T> ServiceHandle <T> for CancellableServiceHandle <T>
+impl <T> ServiceHandle for CancellableServiceHandle <T>
 where T: Unpin + Default + ServiceExitStatus
 {
 	fn shutdown (&mut self)
@@ -70,7 +70,7 @@ where T: Unpin + Default + ServiceExitStatus
 		Some (exit_status)
 	}
 
-	fn take_output (&mut self) -> Option <T>
+	fn take_output (&mut self) -> Option <<Self as Future>::Output>
 	{
 		match std::mem::replace (self, Self::Taken)
 		{
@@ -86,7 +86,7 @@ where T: Unpin + Default + ServiceExitStatus
 }
 
 impl <T> Future for CancellableServiceHandle <T>
-where T: Unpin + Default,
+where T: Unpin + Default
 {
 	type Output = T;
 

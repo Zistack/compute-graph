@@ -8,11 +8,11 @@ use std::future::Future;
 
 use crate::exit_status::*;
 
-pub trait ServiceHandle <T>: Future <Output = T>
+pub trait ServiceHandle: Future
 {
 	fn shutdown (&mut self);
 
 	async fn exit_status (&mut self) -> Option <ExitStatus>;
 
-	fn take_output (&mut self) -> Option <T>;
+	fn take_output (&mut self) -> Option <Self::Output>;
 }
