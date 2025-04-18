@@ -1,9 +1,7 @@
 use syn::{
 	FnArg,
-	Generics,
 	Ident,
 	ItemFn,
-	Pat,
 	Type,
 	TypeImplTrait,
 	TypeParamBound,
@@ -16,6 +14,8 @@ use syn::punctuated::Punctuated;
 use syn::parse::{Parse, ParseStream, Result, Error};
 use syn_derive::Parse;
 use quote::{ToTokens, format_ident};
+
+use crate::util::scan_arg;
 
 mod kw
 {
@@ -75,6 +75,28 @@ struct OutputPortSpec
 	output_param: Ident,
 	arrow_token: Token! [<-],
 	output_item_spec: OutputItemSpec
+}
+
+enum PortSpec
+{
+	Input (InputPortSpec),
+	Output (OutputPortSpec)
+}
+
+impl From <InputPortSpec> for PortSpec
+{
+	fn from (input_port_spec: InputPortSpec) -> Self
+	{
+		Self::Input (input_port_spec)
+	}
+}
+
+impl From <OutputPortSpec> for PortSpec
+{
+	fn from (output_port_spec: OutputPortSpec) -> Self
+	{
+		Self::Output (output_port_spec)
+	}
 }
 
 #[allow (dead_code)]
@@ -166,120 +188,25 @@ impl Parse for ExpandStreamsMarkers
 	}
 }
 
-fn compute_replacement_type
+fn match_macro
 (
-	expand_streams_markers: &ExpandStreamsMarkers,
-	generics: &mut Generics,
-	arg_type: &Type
+	markers: &ExpandStreamsMarkers,
+	macro_ident: &Ident,
+	macro_tokens: &proc_macro2::TokenStream
 )
--> Result <Option <Type>>
+-> Result <Option <PortSpec>>
 {
-	let type_macro = match arg_type
+	if macro_ident == &markers . input_marker
 	{
-		Type::Macro (type_macro) => type_macro,
-		_ => return Ok (None)
-	};
-
-	if type_macro . mac . path . get_ident ()
-		== Some (&expand_streams_markers . input_marker)
-	{
-		let InputPortSpec {input_param, input_item_spec, ..} =
-			parse2 (type_macro . mac . tokens . clone ())?;
-
-		let predicates = &mut generics . make_where_clause () . predicates;
-
-		let stream_ext_bound: TypeParamBound = match input_item_spec
-		{
-			InputItemSpec::Traits (input_item_traits) =>
-			{
-				let input_item_bounds = input_item_traits . bounds;
-
-				predicates . push
-				(
-					parse_quote!
-					(
-						#input_param::Item: std::marker::Send + #input_item_bounds
-					)
-				);
-
-				parse_quote! (futures::StreamExt)
-			},
-			InputItemSpec::Type (input_item_type) =>
-			{
-				predicates . push
-				(
-					parse_quote! (#input_item_type: std::marker::Send)
-				);
-
-				parse_quote! (futures::StreamExt <Item = #input_item_type>)
-			}
-		};
-
-		predicates . push
-		(
-			parse_quote!
-			(
-				#input_param: std::marker::Unpin
-					+ #stream_ext_bound
-					+ std::fmt::Debug
-			)
-		);
-
-		return Ok (Some (parse_quote! (#input_param)));
+		return Ok (Some (PortSpec::from (parse2::<InputPortSpec> (macro_tokens . clone ())?)))
 	}
 
-	if type_macro . mac . path . get_ident ()
-		== Some (&expand_streams_markers . output_marker)
+	if macro_ident == &markers . output_marker
 	{
-		let OutputPortSpec
-		{
-			output_param,
-			output_item_spec,
-			..
-		} = parse2 (type_macro . mac . tokens . clone ())?;
-		let OutputItemSpec {output_item_type, output_item_traits, ..} =
-			output_item_spec;
-
-		let predicates = &mut generics . make_where_clause () . predicates;
-
-		predicates . push
-		(
-			parse_quote!
-			(
-				#output_param: std::marker::Unpin
-					+ futures::SinkExt <#output_item_type>
-					+ std::fmt::Debug
-			)
-		);
-
-		match output_item_traits
-		{
-			None => predicates . push
-			(
-				parse_quote! (#output_item_type: std::marker::Send)
-			),
-			Some (output_item_traits) => predicates . push
-			(
-				parse_quote!
-				(
-					#output_item_type: std::marker::Send + #output_item_traits
-				)
-			)
-		}
-
-		predicates . push
-		(
-			parse_quote!
-			(
-				<#output_param as futures::Sink <#output_item_type>>::Error:
-					std::fmt::Display
-			)
-		);
-
-		return Ok (Some (parse_quote! (#output_param)));
+		return Ok (Some (PortSpec::from (parse2::<OutputPortSpec> (macro_tokens . clone ())?)))
 	}
 
-	return Ok (None);
+	Ok (None)
 }
 
 fn expand_streams_inner
@@ -297,21 +224,128 @@ fn expand_streams_inner
 			_ => continue
 		};
 
-		let pat_ident = match &mut *pat_type . pat
-		{
-			Pat::Ident (pat_ident) => pat_ident,
-			_ => continue
-		};
-
-		if let Some (replacement_type) = compute_replacement_type
+		let (pat_ident, port_spec) = match scan_arg
 		(
-			&expand_streams_markers,
-			&mut function . sig . generics,
-			&*pat_type . ty
+			pat_type,
+			|ident, tokens| match_macro (&expand_streams_markers, ident, tokens)
 		)?
 		{
-			pat_ident . mutability = Some (parse_quote! (mut));
-			*pat_type . ty = replacement_type;
+			Some (arg_info) => arg_info,
+			None => continue
+		};
+
+		pat_ident . mutability = Some (<Token! [mut]>::default ());
+
+		match port_spec
+		{
+			PortSpec::Input (input_port_spec) =>
+			{
+				let InputPortSpec {input_param, input_item_spec, ..} =
+					input_port_spec;
+
+				let predicates = &mut function
+					. sig
+					. generics
+					. make_where_clause ()
+					. predicates;
+
+				let stream_ext_bound: TypeParamBound = match input_item_spec
+				{
+					InputItemSpec::Traits (input_item_traits) =>
+					{
+						let input_item_bounds = input_item_traits . bounds;
+
+						predicates . push
+						(
+							parse_quote!
+							(
+								#input_param::Item: std::marker::Send
+									+ #input_item_bounds
+							)
+						);
+
+						parse_quote! (futures::StreamExt)
+					},
+					InputItemSpec::Type (input_item_type) =>
+					{
+						predicates . push
+						(
+							parse_quote! (#input_item_type: std::marker::Send)
+						);
+
+						parse_quote!
+						(
+							futures::StreamExt <Item = #input_item_type>
+						)
+					}
+				};
+
+				predicates . push
+				(
+					parse_quote!
+					(
+						#input_param: std::marker::Unpin
+							+ #stream_ext_bound
+							+ std::fmt::Debug
+					)
+				);
+
+				*pat_type . ty = parse_quote! (#input_param);
+			},
+			PortSpec::Output (output_port_spec) =>
+			{
+				let OutputPortSpec
+				{
+					output_param,
+					output_item_spec,
+					..
+				} = output_port_spec;
+				let OutputItemSpec {output_item_type, output_item_traits, ..} =
+					output_item_spec;
+
+				let predicates = &mut function
+					. sig
+					. generics
+					. make_where_clause ()
+					. predicates;
+
+				predicates . push
+				(
+					parse_quote!
+					(
+						#output_param: std::marker::Unpin
+							+ futures::SinkExt <#output_item_type>
+							+ std::fmt::Debug
+					)
+				);
+
+				match output_item_traits
+				{
+					None => predicates . push
+					(
+						parse_quote! (#output_item_type: std::marker::Send)
+					),
+					Some (output_item_traits) => predicates . push
+					(
+						parse_quote!
+						(
+							#output_item_type: std::marker::Send
+								+ #output_item_traits
+						)
+					)
+				}
+
+				predicates . push
+				(
+					parse_quote!
+					(
+						<#output_param as futures::Sink <#output_item_type>>::Error:
+							std::fmt::Display
+					)
+				);
+
+				*pat_type . ty = parse_quote! (#output_param);
+			}
 		}
 	}
 

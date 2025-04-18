@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 
+mod util;
 mod event_pattern;
 
 mod expand_streams;
