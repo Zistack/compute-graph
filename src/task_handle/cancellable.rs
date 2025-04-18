@@ -2,75 +2,51 @@ use std::future::Future;
 use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
-use tokio::task::{JoinHandle, JoinError};
-
 use super::TaskHandle;
 
-pub enum CancellableTaskHandle <T>
+pub enum CancellableTaskHandle <F>
 {
-	Handle (JoinHandle <T>),
+	Future (F),
 	Finished
 }
 
-impl <T> CancellableTaskHandle <T>
+impl <F> CancellableTaskHandle <F>
 {
-	pub fn new (handle: JoinHandle <T>) -> Self
+	pub fn new (future: F) -> Self
 	{
-		Self::Handle (handle)
-	}
-
-	fn unwrap_output_result (output_result: Result <T, JoinError>) -> T
-	where T: Default
-	{
-		match output_result
-		{
-			Ok (output) => output,
-			Err (join_error) =>
-			{
-				if let Ok (panic) = join_error . try_into_panic ()
-				{
-					std::panic::resume_unwind (panic);
-				}
-
-				T::default ()
-			}
-		}
+		Self::Future (future)
 	}
 }
 
-impl <T> TaskHandle for CancellableTaskHandle <T>
-where T: Unpin + Default
+impl <F> TaskHandle for CancellableTaskHandle <F>
+where F: Future + Unpin
 {
 	fn abort (&mut self)
 	{
-		if let Self::Handle (handle) = self
-		{
-			handle . abort ();
-		}
+		// We drop the future to abort it.
+		*self = Self::Finished;
 	}
 }
 
-impl <T> Future for CancellableTaskHandle <T>
-where T: Unpin + Default
+impl <F> Future for CancellableTaskHandle <F>
+where F: Future + Unpin
 {
-	type Output = T;
+	type Output = F::Output;
 
-	fn poll (self: Pin <&mut Self>, cx: &mut Context)
-	-> Poll <<Self as Future>::Output>
+	fn poll (self: Pin <&mut Self>, cx: &mut Context) -> Poll <Self::Output>
 	{
 		let mut_self = self . get_mut ();
 
 		match std::mem::replace (mut_self, Self::Finished)
 		{
-			Self::Handle (mut handle) => match pin! (&mut handle) . poll (cx)
+			Self::Future (mut future) => match pin! (&mut future) . poll (cx)
 			{
 				Poll::Pending =>
 				{
-					*mut_self = Self::Handle (handle);
+					*mut_self = Self::Future (future);
 					Poll::Pending
 				},
-				Poll::Ready (output_result) =>
-					Poll::Ready (Self::unwrap_output_result (output_result)),
+				Poll::Ready (output) => Poll::Ready (output)
 			}
 			Self::Finished =>
 				panic! ("task handle was polled after output was taken")

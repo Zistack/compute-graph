@@ -3,51 +3,33 @@ use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use tokio::sync::oneshot::Sender;
-use tokio::task::{JoinHandle, JoinError};
 
 use super::TaskHandle;
 
-pub enum SignallableTaskHandle <T>
+pub enum SignallableTaskHandle <F>
 {
-	Handle
+	Future
 	{
-		handle: JoinHandle <T>,
+		future: F,
 		shutdown_trigger: Option <Sender <()>>
 	},
 	Finished
 }
 
-impl <T> SignallableTaskHandle <T>
+impl <F> SignallableTaskHandle <F>
 {
-	pub fn new (handle: JoinHandle <T>, shutdown_trigger: Sender <()>) -> Self
+	pub fn new (future: F, shutdown_trigger: Sender <()>) -> Self
 	{
-		Self::Handle {handle, shutdown_trigger: Some (shutdown_trigger)}
-	}
-
-	fn unwrap_output_result (output_result: Result <T, JoinError>) -> T
-	{
-		match output_result
-		{
-			Ok (output) => output,
-			Err (join_error) =>
-			{
-				if let Ok (panic) = join_error . try_into_panic ()
-				{
-					std::panic::resume_unwind (panic);
-				}
-
-				panic! ("task was cancelled")
-			}
-		}
+		Self::Future {future, shutdown_trigger: Some (shutdown_trigger)}
 	}
 }
 
-impl <T> TaskHandle for SignallableTaskHandle <T>
-where T: Unpin
+impl <F> TaskHandle for SignallableTaskHandle <F>
+where F: Future + Unpin
 {
 	fn abort (&mut self)
 	{
-		if let Self::Handle {shutdown_trigger, ..} = self
+		if let Self::Future {shutdown_trigger, ..} = self
 		{
 			if let Some (shutdown_trigger) = shutdown_trigger . take ()
 			{
@@ -57,27 +39,26 @@ where T: Unpin
 	}
 }
 
-impl <T> Future for SignallableTaskHandle <T>
-where T: Unpin
+impl <F> Future for SignallableTaskHandle <F>
+where F: Future + Unpin
 {
-	type Output = T;
+	type Output = F::Output;
 
 	fn poll (self: Pin <&mut Self>, cx: &mut Context)
-	-> Poll <<Self as Future>::Output>
+	-> Poll <Self::Output>
 	{
 		let mut_self = self . get_mut ();
 
 		match std::mem::replace (mut_self, Self::Finished)
 		{
-			Self::Handle {mut handle, shutdown_trigger} => match pin! (&mut handle) . poll (cx)
+			Self::Future {mut future, shutdown_trigger} => match pin! (&mut future) . poll (cx)
 			{
 				Poll::Pending =>
 				{
-					*mut_self = Self::Handle {handle, shutdown_trigger};
+					*mut_self = Self::Future {future, shutdown_trigger};
 					Poll::Pending
 				},
-				Poll::Ready (output_result) =>
-					Poll::Ready (Self::unwrap_output_result (output_result))
+				Poll::Ready (output) => Poll::Ready (output)
 			},
 			Self::Finished =>
 				panic! ("task handle was polled after output was taken")
