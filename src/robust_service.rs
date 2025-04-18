@@ -4,23 +4,24 @@ use tokio::sync::{oneshot, watch};
 use tokio::time::{Duration, sleep};
 
 use crate::{service, select, event_loop};
-use crate::exit_status::{AlwaysClean, ShouldTerminateClean};
-use crate::service_handle::ServiceHandle;
+use crate::exit_status::{ServiceExitStatus, AlwaysClean, ShouldTerminateClean};
+use crate::service_handle::{ServiceHandle, CancellableServiceHandle};
 use crate::service_state::ServiceState;
+use crate::task_handle::TaskHandle;
 
 use crate as compute_graph;
 
-async fn replace_down_service <C, S>
+async fn replace_down_service <C, T>
 (
 	constructor_handle: C,
-	service_handle: &mut S,
+	service_handle: &mut CancellableServiceHandle <T>,
 	state_channel: &mut watch::Sender <ServiceState>
 )
 where
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
-	S: ServiceHandle
+	C: Future <Output = CancellableServiceHandle <T>>,
+	T: Default + ServiceExitStatus + Unpin
 {
-	let new_service_handle = constructor_handle . await . into_value ();
+	let new_service_handle = constructor_handle . await;
 
 	let mut old_service_handle =
 		std::mem::replace (service_handle, new_service_handle);
@@ -31,15 +32,15 @@ where
 	old_service_handle . await;
 }
 
-async fn replace_service <C, S>
+async fn replace_service <C, T>
 (
 	mut constructor_handle: C,
-	service_handle: &mut S,
+	service_handle: &mut CancellableServiceHandle <T>,
 	state_channel: &mut watch::Sender <ServiceState>
 )
 where
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
-	S: ServiceHandle + Unpin
+	C: Future <Output = CancellableServiceHandle <T>> + Unpin,
+	T: Default + ServiceExitStatus + Unpin
 {
 	select!
 	{
@@ -54,9 +55,8 @@ where
 				state_channel
 			) . await
 		},
-		constructor_result = &mut constructor_handle =>
+		new_service_handle = &mut constructor_handle =>
 		{
-			let new_service_handle = constructor_result . into_value ();
 			let mut old_service_handle =
 				std::mem::replace (service_handle, new_service_handle);
 
@@ -69,7 +69,7 @@ where
 }
 
 #[service]
-pub async fn robust_service <F, C, S>
+pub async fn robust_service <F, C, T>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>
@@ -77,11 +77,10 @@ pub async fn robust_service <F, C, S>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle + Send + Unpin,
-	S::Output: Send
+	C: Future <Output = CancellableServiceHandle <T>> + Send,
+	T: Default + ServiceExitStatus + Send + Unpin
 {
-	let mut service_handle = constructor () . await . into_value ();
+	let mut service_handle = constructor () . await;
 
 	state_channel . send_replace (ServiceState::Up);
 
@@ -102,7 +101,7 @@ where
 }
 
 #[service]
-pub async fn robust_service_with_preemptive_replacement <F, C, S>
+pub async fn robust_service_with_preemptive_replacement <F, C, T>
 (
 	mut constructor: F,
 	mut state_channel: watch::Sender <ServiceState>,
@@ -111,11 +110,10 @@ pub async fn robust_service_with_preemptive_replacement <F, C, S>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
-	S: ServiceHandle + Send + Unpin,
-	S::Output: Send
+	C: Future <Output = CancellableServiceHandle <T>> + Send + Unpin,
+	T: Default + ServiceExitStatus + Send + Unpin
 {
-	let mut service_handle = constructor () . await . into_value ();
+	let mut service_handle = constructor () . await;
 
 	state_channel . send_replace (ServiceState::Up);
 
@@ -150,15 +148,27 @@ async fn replace_down_service_with_shutdown <C, S>
 )
 -> ShouldTerminateClean
 where
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
-	S: ServiceHandle
+	C: TaskHandle + Future <Output = Option <S>> + Unpin,
+	S: ServiceHandle + Unpin
 {
 	select!
 	{
-		_ = &mut *shutdown => ShouldTerminateClean::from (true),
+		_ = &mut *shutdown =>
+		{
+			constructor_handle . abort ();
+			if let Some (mut new_service_handle) = constructor_handle . await
+			{
+				new_service_handle . shutdown ();
+				new_service_handle . await;
+			}
+
+			ShouldTerminateClean::from (true)
+		},
 		constructor_result = &mut constructor_handle =>
 		{
-			let new_service_handle = constructor_result . into_value ();
+			// The constructor should always return Some (S) unless it was
+			// aborted.
+			let new_service_handle = constructor_result . unwrap ();
 			let mut old_service_handle =
 				std::mem::replace (service_handle, new_service_handle);
 
@@ -179,12 +189,22 @@ async fn replace_service_with_shutdown <C, S>
 )
 -> ShouldTerminateClean
 where
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Unpin,
+	C: TaskHandle + Future <Output = Option <S>> + Unpin,
 	S: ServiceHandle + Unpin
 {
 	select!
 	{
-		_ = &mut *shutdown => ShouldTerminateClean::from (true),
+		_ = &mut *shutdown =>
+		{
+			constructor_handle . abort ();
+			if let Some (mut new_service_handle) = constructor_handle . await
+			{
+				new_service_handle . shutdown ();
+				new_service_handle . await;
+			}
+
+			ShouldTerminateClean::from (true)
+		},
 		_ = &mut *service_handle =>
 		{
 			state_channel . send_replace (ServiceState::Down);
@@ -199,7 +219,9 @@ where
 		},
 		constructor_result = &mut constructor_handle =>
 		{
-			let new_service_handle = constructor_result . into_value ();
+			// The constructor should always return Some (S) unless it was
+			// aborted.
+			let new_service_handle = constructor_result . unwrap ();
 			let mut old_service_handle =
 				std::mem::replace (service_handle, new_service_handle);
 
@@ -220,16 +242,30 @@ pub async fn robust_service_with_shutdown <F, C, S>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	C: TaskHandle + Future <Output = Option <S>> + Send + Unpin,
 	S: ServiceHandle + Send + Unpin,
 	S::Output: Send
 {
+	let mut constructor_handle = constructor ();
+
 	let mut service_handle = tokio::select!
 	{
-		_ = &mut shutdown => return AlwaysClean::new (()),
-		constructor_result = constructor () =>
-			constructor_result . into_value ()
+		_ = &mut shutdown =>
+		{
+			constructor_handle . abort ();
+			if let Some (mut service_handle) = constructor_handle . await
+			{
+				service_handle . shutdown ();
+				service_handle . await;
+			}
+
+			return AlwaysClean::new (());
+		},
+		constructor_result = &mut constructor_handle =>
+			constructor_result . unwrap ()
 	};
+
+	drop (constructor_handle);
 
 	state_channel . send_replace (ServiceState::Up);
 
@@ -266,16 +302,30 @@ pub async fn robust_service_with_shutdown_and_preemptive_replacement <F, C, S>
 -> AlwaysClean
 where
 	F: FnMut () -> C,
-	C: ServiceHandle + Future <Output = AlwaysClean <S>> + Send + Unpin,
+	C: TaskHandle + Future <Output = Option <S>> + Send + Unpin,
 	S: ServiceHandle + Send + Unpin,
 	S::Output: Send
 {
+	let mut constructor_handle = constructor ();
+
 	let mut service_handle = tokio::select!
 	{
-		_ = &mut shutdown => return AlwaysClean::new (()),
-		constructor_result = constructor () =>
-			constructor_result . into_value ()
+		_ = &mut shutdown =>
+		{
+			constructor_handle . abort ();
+			if let Some (mut service_handle) = constructor_handle . await
+			{
+				service_handle . shutdown ();
+				service_handle . await;
+			}
+
+			return AlwaysClean::new (());
+		}
+		constructor_result = &mut constructor_handle =>
+			constructor_result . unwrap ()
 	};
+
+	drop (constructor_handle);
 
 	state_channel . send_replace (ServiceState::Up);
 
@@ -301,5 +351,10 @@ where
 			&mut service_handle,
 			&mut state_channel
 		) . await
-	}
+	};
+
+	service_handle . shutdown ();
+	service_handle . await;
+
+	AlwaysClean::new (())
 }
