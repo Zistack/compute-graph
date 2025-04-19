@@ -195,8 +195,8 @@ where
 pub async fn robust_service_with_preemptive_replacement_and_report <F, C, T>
 (
 	mut constructor: F,
-	mut state_channel: watch::Sender <ServiceState>,
-	replacement_interval: Duration
+	replacement_interval: Duration,
+	mut state_channel: watch::Sender <ServiceState>
 )
 -> AlwaysClean
 where
@@ -275,8 +275,8 @@ where
 pub async fn robust_service_with_shutdown_and_preemptive_replacement_and_report <F, C, S>
 (
 	mut constructor: F,
-	mut state_channel: watch::Sender <ServiceState>,
-	replacement_interval: Duration
+	replacement_interval: Duration,
+	mut state_channel: watch::Sender <ServiceState>
 )
 -> AlwaysClean
 where
