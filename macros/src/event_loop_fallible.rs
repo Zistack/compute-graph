@@ -1,4 +1,4 @@
-use syn::{Expr, Token};
+use syn::{Ident, Expr, Token};
 use syn::punctuated::Punctuated;
 use syn::parse::{Parser, Result, Error};
 use quote::quote;
@@ -45,9 +45,11 @@ fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 		quote! (compute_graph::exit_status::ExitStatus::Clean)
 	};
 
+	let intermediate = Ident::new ("__item", proc_macro2::Span::mixed_site ());
+
 	quote!
 	{
-		#item = #stream . next () => match #item
+		#intermediate = #stream . next () => match #intermediate
 		{
 			std::option::Option::Some (#item) => #implemented_handler,
 			std::option::Option::None =>
