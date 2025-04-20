@@ -523,7 +523,7 @@ fn robust_service_inner
 		},
 		(ShutdownConfig::None, None, Some (state_channel_sender_ident)) => quote!
 		{
-			compute_graph::robust_service_with_report
+			compute_graph::robust_service::robust_service_with_report
 			(
 				#constructor_def,
 				#state_channel_sender_ident
@@ -547,7 +547,7 @@ fn robust_service_inner
 		{
 			compute_graph
 				::robust_service
-				::robust_service_with_preeemptive_repacement_and_report
+				::robust_service_with_preemptive_replacement_and_report
 			(
 				#constructor_def,
 				#replacement_interval_ident,
@@ -562,7 +562,9 @@ fn robust_service_inner
 		},
 		(_, None, Some (state_channel_sender_ident)) => quote!
 		{
-			compute_graph::robust_service::robust_service_with_shutdown_and_report
+			compute_graph
+				::robust_service
+				::robust_service_with_shutdown_and_report
 			(
 				#constructor_def,
 				#state_channel_sender_ident
