@@ -421,14 +421,14 @@ fn robust_service_inner
 	{
 		ShutdownConfig::None => parse_quote!
 		(
-			compute_graph::service_handle::CancellableServiceHandle
+			-> compute_graph::service_handle::CancellableServiceHandle
 			<
-				compute_graph::exit_statue::AlwaysClean
+				compute_graph::exit_status::AlwaysClean
 			>
 		),
 		_ => parse_quote!
 		(
-			compute_graph::service_handle::SignallableServiceHandle
+			-> compute_graph::service_handle::SignallableServiceHandle
 			<
 				compute_graph::exit_status::AlwaysClean
 			>
