@@ -19,6 +19,14 @@ pub fn service (attr: TokenStream, item: TokenStream) -> TokenStream
 	service::service_impl (attr, item)
 }
 
+mod task;
+
+#[proc_macro_attribute]
+pub fn task (attr: TokenStream, item: TokenStream) -> TokenStream
+{
+	task::task_impl (attr, item)
+}
+
 mod select;
 
 #[proc_macro]
