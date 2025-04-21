@@ -19,14 +19,6 @@ pub fn service (attr: TokenStream, item: TokenStream) -> TokenStream
 	service::service_impl (attr, item)
 }
 
-mod robust_service;
-
-#[proc_macro_attribute]
-pub fn robust_service (attr: TokenStream, item: TokenStream) -> TokenStream
-{
-	robust_service::robust_service_impl (attr, item)
-}
-
 mod select;
 
 #[proc_macro]
