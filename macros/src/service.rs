@@ -11,6 +11,8 @@ use syn::parse::{Parse, ParseStream, Result, Error};
 use syn_derive::Parse;
 use quote::{format_ident, quote};
 
+use crate::util::map_return_type;
+
 mod kw
 {
 	syn::custom_keyword! (shutdown);
@@ -46,19 +48,14 @@ fn gen_cancellable_service (function: ItemFn) -> proc_macro2::TokenStream
 {
 	let ItemFn {attrs, vis, mut sig, block} = function;
 
-	let new_return_type = match sig . output
-	{
-		ReturnType::Default => parse_quote!
+	sig . output = map_return_type
+	(
+		sig . output,
+		|ty| parse_quote!
 		(
-			-> compute_graph::service_handle::CancellableServiceHandle <()>
-		),
-		ReturnType::Type (arrow_token, ty) => parse_quote!
-		(
-			#arrow_token compute_graph::service_handle::CancellableServiceHandle <#ty>
+			compute_graph::service_handle::CancellableServiceHandle <#ty>
 		)
-	};
-
-	sig . output = new_return_type;
+	);
 
 	quote!
 	{
@@ -80,19 +77,14 @@ fn gen_signallable_service (shutdown_object: Ident, function: ItemFn)
 
 	let shutdown_trigger = format_ident! ("{}_trigger", shutdown_object);
 
-	let new_return_type = match sig . output
-	{
-		ReturnType::Default => parse_quote!
+	sig . output = map_return_type
+	(
+		sig . output,
+		|ty| parse_quote!
 		(
-			-> compute_graph::service_handle::SignallableServiceHandle <()>
-		),
-		ReturnType::Type (arrow_token, ty) => parse_quote!
-		(
-			#arrow_token compute_graph::service_handle::SignallableServiceHandle <#ty>
+			compute_graph::service_handle::SignallableServiceHandle <#ty>
 		)
-	};
-
-	sig . output = new_return_type;
+	);
 
 	quote!
 	{
