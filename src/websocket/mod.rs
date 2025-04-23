@@ -4,4 +4,4 @@ mod shuttle;
 mod keepalive;
 
 pub mod connection;
-mod client;
+pub mod client;
