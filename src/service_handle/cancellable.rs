@@ -1,16 +1,19 @@
 use std::future::Future;
-use std::pin::{Pin, pin};
+use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use futures::future::FusedFuture;
+use pin_project::pin_project;
 use tokio::task::{JoinHandle, JoinError};
 
 use crate::exit_status::{ExitStatus, ServiceExitStatus};
 
 use super::ServiceHandle;
 
+#[pin_project (project = CancellableServiceHandleProjection)]
 pub enum CancellableServiceHandle <T>
 {
-	Handle (JoinHandle <T>),
+	Handle (#[pin] JoinHandle <T>),
 	Output (T),
 	Taken
 }
@@ -42,7 +45,9 @@ impl <T> CancellableServiceHandle <T>
 }
 
 impl <T> ServiceHandle for CancellableServiceHandle <T>
-where T: Unpin + Default + ServiceExitStatus
+where
+	T: Default + ServiceExitStatus,
+	Self: Future <Output = T>
 {
 	fn shutdown (&mut self)
 	{
@@ -86,30 +91,53 @@ where T: Unpin + Default + ServiceExitStatus
 }
 
 impl <T> Future for CancellableServiceHandle <T>
-where T: Unpin + Default
+where T: Default
 {
 	type Output = T;
 
-	fn poll (self: Pin <&mut Self>, cx: &mut Context)
+	fn poll (mut self: Pin <&mut Self>, cx: &mut Context)
 	-> Poll <<Self as Future>::Output>
 	{
-		let mut_self = self . get_mut ();
-
-		match std::mem::replace (mut_self, Self::Taken)
+		match self . as_mut () . project ()
 		{
-			Self::Handle (mut handle) => match pin! (&mut handle) . poll (cx)
+			CancellableServiceHandleProjection::Handle (handle) =>
+				match handle . poll (cx)
 			{
-				Poll::Pending =>
-				{
-					*mut_self = Self::Handle (handle);
-					Poll::Pending
-				},
+				Poll::Pending => Poll::Pending,
 				Poll::Ready (output_result) =>
+				{
+					self . set (Self::Taken);
 					Poll::Ready (Self::unwrap_output_result (output_result))
+				}
 			},
-			Self::Output (output) => Poll::Ready (output),
-			Self::Taken =>
+			CancellableServiceHandleProjection::Output (_) => unsafe
+			{
+				if let Self::Output (output) = std::mem::replace
+				(
+					self . get_unchecked_mut (),
+					Self::Taken
+				)
+				{
+					Poll::Ready (output)
+				}
+				else { unreachable! () }
+			},
+			CancellableServiceHandleProjection::Taken =>
 				panic! ("service handle was polled after output was taken")
+		}
+	}
+}
+
+impl <T> FusedFuture for CancellableServiceHandle <T>
+where Self: Future
+{
+	fn is_terminated (&self) -> bool
+	{
+		match self
+		{
+			Self::Handle (_) => false,
+			Self::Output (_) => false,
+			Self::Taken => true
 		}
 	}
 }
