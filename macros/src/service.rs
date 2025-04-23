@@ -1,46 +1,21 @@
+use darling::{FromMeta, Error};
+use darling::ast::NestedMeta;
 use syn::{
 	FnArg,
 	Ident,
 	ItemFn,
-	Token,
 	parse,
 	parse_quote
 };
-use syn::parse::{Parse, ParseStream, Result, Error};
-use syn_derive::Parse;
+use syn::parse::Result;
 use quote::{format_ident, quote};
 
 use crate::util::map_return_type;
 
-mod kw
+#[derive (FromMeta)]
+struct ServiceInput
 {
-	syn::custom_keyword! (shutdown);
-}
-
-#[allow (dead_code)]
-#[derive (Parse)]
-struct ShutdownObject
-{
-	shutdown_token: kw::shutdown,
-	eq_token: Token! [=],
-	ident: Ident
-}
-
-struct MaybeShutdownObject (Option <ShutdownObject>);
-
-impl Parse for MaybeShutdownObject
-{
-	fn parse (input: ParseStream <'_>) -> Result <Self>
-	{
-		if input . peek (kw::shutdown)
-		{
-			Ok (MaybeShutdownObject (Some (input . parse ()?)))
-		}
-		else
-		{
-			Ok (MaybeShutdownObject (None))
-		}
-	}
+	shutdown: Option <Ident>
 }
 
 fn gen_cancellable_service (function: ItemFn) -> proc_macro2::TokenStream
@@ -102,7 +77,7 @@ fn gen_signallable_service (shutdown_object: Ident, function: ItemFn)
 	}
 }
 
-fn service_inner (shutdown_object: Option <ShutdownObject>, mut function: ItemFn)
+fn service_inner (service_input: ServiceInput, mut function: ItemFn)
 -> Result <proc_macro2::TokenStream>
 {
 	function . sig . asyncness = None;
@@ -123,25 +98,12 @@ fn service_inner (shutdown_object: Option <ShutdownObject>, mut function: ItemFn
 			. push (parse_quote! (#arg_type: Send + 'static));
 	}
 
-	match shutdown_object
+	match service_input . shutdown
 	{
 		None => Ok (gen_cancellable_service (function)),
 		Some (shutdown_object) =>
-			Ok (gen_signallable_service (shutdown_object . ident, function))
+			Ok (gen_signallable_service (shutdown_object, function))
 	}
-}
-
-fn try_service_impl
-(
-	attr: proc_macro::TokenStream,
-	item: proc_macro::TokenStream
-)
--> Result <proc_macro2::TokenStream>
-{
-	let shutdown_object: MaybeShutdownObject = parse (attr)?;
-	let input_function = parse (item)?;
-
-	service_inner (shutdown_object . 0, input_function)
 }
 
 pub fn service_impl
@@ -151,7 +113,36 @@ pub fn service_impl
 )
 -> proc_macro::TokenStream
 {
-	try_service_impl (attr, item)
-		. unwrap_or_else (Error::into_compile_error)
-		. into ()
+	let mut errors = Error::accumulator ();
+
+	let attr_args = errors . handle_in
+	(
+		||
+		NestedMeta::parse_meta_list (attr . into ()) . map_err (|e| e . into ())
+	);
+
+	let service_input = attr_args . and_then
+	(
+		|attr_args| errors . handle_in (|| ServiceInput::from_list (&attr_args))
+	);
+
+	let function = errors . handle_in
+	(
+		|| parse (item) . map_err (|e| e . into ())
+	);
+
+	if let (Some (service_input), Some (function)) = (service_input, function)
+	{
+		if let Some (generated_function) = errors . handle_in
+		(
+			||
+			service_inner (service_input, function) . map_err (|e| e . into ())
+		)
+		{
+			errors . finish () . unwrap ();
+			return generated_function . into ();
+		}
+	}
+
+	errors . finish () . unwrap_err () . write_errors () . into ()
 }

@@ -1,3 +1,5 @@
+use darling::{FromMeta, Error};
+use darling::ast::NestedMeta;
 use syn::{
 	FnArg,
 	Ident,
@@ -11,17 +13,11 @@ use syn::{
 	parse_quote
 };
 use syn::punctuated::Punctuated;
-use syn::parse::{Parse, ParseStream, Result, Error};
+use syn::parse::{Parse, ParseStream, Result};
 use syn_derive::Parse;
-use quote::{ToTokens, format_ident};
+use quote::ToTokens;
 
 use crate::util::scan_arg;
-
-mod kw
-{
-	syn::custom_keyword! (input_marker);
-	syn::custom_keyword! (output_marker);
-}
 
 #[derive (Parse)]
 enum InputItemSpec
@@ -99,98 +95,28 @@ impl From <OutputPortSpec> for PortSpec
 	}
 }
 
-#[allow (dead_code)]
-#[derive (Parse)]
-enum MarkerSpec
+fn default_input_marker () -> String
 {
-	#[parse (peek = kw::input_marker)]
-	Input
-	{
-		input_marker_token: kw::input_marker,
-		eq_token: Token! [=],
-		ident: Ident
-	},
-	#[parse (peek = kw::output_marker)]
-	Output
-	{
-		output_marker_token: kw::output_marker,
-		eq_token: Token! [=],
-		ident: Ident
-	}
+	"input" . into ()
 }
 
-struct ExpandStreamsMarkers
+fn default_output_marker () -> String
 {
-	input_marker: Ident,
-	output_marker: Ident
+	"output" . into ()
 }
 
-impl Parse for ExpandStreamsMarkers
+#[derive (FromMeta)]
+struct ExpandStreamsInput
 {
-	fn parse (input: ParseStream <'_>) -> Result <Self>
-	{
-		let mut input_marker = Option::None;
-		let mut output_marker = Option::None;
-
-		let marker_specifications =
-			Punctuated::<MarkerSpec, Token! [,]>::parse_terminated (input)?;
-
-		for marker_specification in marker_specifications
-		{
-			match marker_specification
-			{
-				MarkerSpec::Input {ident, ..} =>
-				{
-					if let Some (ident) = input_marker
-					{
-						return Err
-						(
-							Error::new_spanned
-							(
-								ident,
-								"input marker has already been specified"
-							)
-						);
-					}
-					else
-					{
-						input_marker = Some (ident);
-					}
-				},
-				MarkerSpec::Output {ident, ..} =>
-				{
-					if let Some (ident) = output_marker
-					{
-						return Err
-						(
-							Error::new_spanned
-							(
-								ident,
-								"output_marker has already been specified"
-							)
-						);
-					}
-					else
-					{
-						output_marker = Some (ident);
-					}
-				}
-			}
-		}
-
-		let ret = Self
-		{
-			input_marker: input_marker . unwrap_or (format_ident! ("input")),
-			output_marker: output_marker . unwrap_or (format_ident! ("output"))
-		};
-
-		Ok (ret)
-	}
+	#[darling (default = "default_input_marker")]
+	input_marker: String,
+	#[darling (default = "default_output_marker")]
+	output_marker: String
 }
 
 fn match_macro
 (
-	markers: &ExpandStreamsMarkers,
+	markers: &ExpandStreamsInput,
 	macro_ident: &Ident,
 	macro_tokens: &proc_macro2::TokenStream
 )
@@ -211,7 +137,7 @@ fn match_macro
 
 fn expand_streams_inner
 (
-	expand_streams_markers: ExpandStreamsMarkers,
+	expand_streams_input: ExpandStreamsInput,
 	mut function: ItemFn
 )
 -> Result <proc_macro2::TokenStream>
@@ -227,7 +153,7 @@ fn expand_streams_inner
 		let (pat_ident, port_spec) = match scan_arg
 		(
 			pat_type,
-			|ident, tokens| match_macro (&expand_streams_markers, ident, tokens)
+			|ident, tokens| match_macro (&expand_streams_input, ident, tokens)
 		)?
 		{
 			Some (arg_info) => arg_info,
@@ -352,19 +278,6 @@ fn expand_streams_inner
 	Ok (function . into_token_stream ())
 }
 
-fn try_expand_streams_impl
-(
-	attr: proc_macro::TokenStream,
-	item: proc_macro::TokenStream
-)
--> Result <proc_macro2::TokenStream>
-{
-	let expand_streams_markers = parse (attr)?;
-	let input_function = parse (item)?;
-
-	expand_streams_inner (expand_streams_markers, input_function)
-}
-
 pub fn expand_streams_impl
 (
 	attr: proc_macro::TokenStream,
@@ -372,7 +285,39 @@ pub fn expand_streams_impl
 )
 -> proc_macro::TokenStream
 {
-	try_expand_streams_impl (attr, item)
-		. unwrap_or_else (Error::into_compile_error)
-		. into ()
+	let mut errors = Error::accumulator ();
+
+	let attr_args = errors . handle_in
+	(
+		||
+		NestedMeta::parse_meta_list (attr . into ()) . map_err (|e| e . into ())
+	);
+
+	let expand_streams_input = attr_args . and_then
+	(
+		|attr_args|
+		errors . handle_in (|| ExpandStreamsInput::from_list (&attr_args))
+	);
+
+	let function = errors . handle_in
+	(
+		|| parse (item) . map_err (|e| e . into ())
+	);
+
+	if let (Some (expand_streams_input), Some (function))
+		= (expand_streams_input, function)
+	{
+		if let Some (generated_function) = errors . handle_in
+		(
+			||
+			expand_streams_inner (expand_streams_input, function)
+				. map_err (|e| e . into ())
+		)
+		{
+			errors . finish () . unwrap ();
+			return generated_function . into ();
+		}
+	}
+
+	errors . finish () . unwrap_err () . write_errors () . into ()
 }
