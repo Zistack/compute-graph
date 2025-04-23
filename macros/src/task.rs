@@ -1,7 +1,7 @@
 use darling::{FromMeta, Error};
 use darling::ast::NestedMeta;
 use darling::util::Flag;
-use syn::{Ident, ItemFn, parse, parse_quote};
+use syn::{Ident, FnArg, ItemFn, parse, parse_quote};
 use quote::{format_ident, quote};
 
 use crate::util::map_return_type;
@@ -146,6 +146,25 @@ fn task_inner
 -> proc_macro2::TokenStream
 {
 	function . sig . asyncness = None;
+
+	if forking
+	{
+		for fn_arg in &function . sig . inputs
+		{
+			let arg_type = match fn_arg
+			{
+				FnArg::Receiver (receiver) => &*receiver . ty,
+				FnArg::Typed (pat_type) => &*pat_type . ty
+			};
+
+			function
+				. sig
+				. generics
+				. make_where_clause ()
+				. predicates
+				. push (parse_quote! (#arg_type: Send + 'static));
+		}
+	}
 
 	match shutdown_object
 	{
