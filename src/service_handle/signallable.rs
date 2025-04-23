@@ -3,7 +3,6 @@ use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use futures::future::FusedFuture;
-use pin_project::pin_project;
 use tokio::sync::oneshot::Sender;
 use tokio::task::{JoinHandle, JoinError};
 
@@ -11,12 +10,11 @@ use crate::exit_status::{ExitStatus, ServiceExitStatus};
 
 use super::ServiceHandle;
 
-#[pin_project (project = SignallableServiceHandleProjection)]
 pub enum SignallableServiceHandle <T>
 {
 	Handle
 	{
-		#[pin] handle: JoinHandle <T>,
+		handle: JoinHandle <T>,
 		shutdown_trigger: Option <Sender <()>>
 	},
 	Output (T),
@@ -46,6 +44,10 @@ impl <T> SignallableServiceHandle <T>
 			}
 		}
 	}
+}
+
+impl <T> Unpin for SignallableServiceHandle <T>
+{
 }
 
 impl <T> ServiceHandle for SignallableServiceHandle <T>
@@ -104,10 +106,10 @@ impl <T> Future for SignallableServiceHandle <T>
 	fn poll (mut self: Pin <&mut Self>, cx: &mut Context)
 	-> Poll <<Self as Future>::Output>
 	{
-		match self . as_mut () . project ()
+		match self . as_mut () . get_mut ()
 		{
-			SignallableServiceHandleProjection::Handle {handle, ..} =>
-				match handle . poll (cx)
+			Self::Handle {handle, ..} =>
+				match pin! (handle) . poll (cx)
 			{
 				Poll::Pending => Poll::Pending,
 				Poll::Ready (output_result) =>
@@ -116,11 +118,11 @@ impl <T> Future for SignallableServiceHandle <T>
 					Poll::Ready (Self::unwrap_output_result (output_result))
 				}
 			},
-			SignallableServiceHandleProjection::Output (_) => unsafe
+			Self::Output (_) =>
 			{
 				if let Self::Output (output) = std::mem::replace
 				(
-					self . get_unchecked_mut (),
+					self . get_mut (),
 					Self::Taken
 				)
 				{
@@ -128,7 +130,7 @@ impl <T> Future for SignallableServiceHandle <T>
 				}
 				else { unreachable! () }
 			}
-			SignallableServiceHandleProjection::Taken =>
+			Self::Taken =>
 				panic! ("service handle was polled after output was taken")
 		}
 	}

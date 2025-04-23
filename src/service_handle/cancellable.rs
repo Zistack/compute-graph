@@ -1,19 +1,17 @@
 use std::future::Future;
-use std::pin::Pin;
+use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use futures::future::FusedFuture;
-use pin_project::pin_project;
 use tokio::task::{JoinHandle, JoinError};
 
 use crate::exit_status::{ExitStatus, ServiceExitStatus};
 
 use super::ServiceHandle;
 
-#[pin_project (project = CancellableServiceHandleProjection)]
 pub enum CancellableServiceHandle <T>
 {
-	Handle (#[pin] JoinHandle <T>),
+	Handle (JoinHandle <T>),
 	Output (T),
 	Taken
 }
@@ -42,6 +40,14 @@ impl <T> CancellableServiceHandle <T>
 			}
 		}
 	}
+}
+
+// Taking a page from futures::future::MaybeDone.  We don't need T to be Unpin
+// to implement Unpin - or more accurately, there simply isn't any way for T to
+// _not_ be Unpin in the first place, so we really don't need to bother to
+// check.
+impl <T> Unpin for CancellableServiceHandle <T>
+{
 }
 
 impl <T> ServiceHandle for CancellableServiceHandle <T>
@@ -98,10 +104,10 @@ where T: Default
 	fn poll (mut self: Pin <&mut Self>, cx: &mut Context)
 	-> Poll <<Self as Future>::Output>
 	{
-		match self . as_mut () . project ()
+		match self . as_mut () . get_mut ()
 		{
-			CancellableServiceHandleProjection::Handle (handle) =>
-				match handle . poll (cx)
+			Self::Handle (handle) =>
+				match pin! (handle) . poll (cx)
 			{
 				Poll::Pending => Poll::Pending,
 				Poll::Ready (output_result) =>
@@ -110,11 +116,11 @@ where T: Default
 					Poll::Ready (Self::unwrap_output_result (output_result))
 				}
 			},
-			CancellableServiceHandleProjection::Output (_) => unsafe
+			Self::Output (_) =>
 			{
 				if let Self::Output (output) = std::mem::replace
 				(
-					self . get_unchecked_mut (),
+					self . get_mut (),
 					Self::Taken
 				)
 				{
@@ -122,7 +128,7 @@ where T: Default
 				}
 				else { unreachable! () }
 			},
-			CancellableServiceHandleProjection::Taken =>
+			Self::Taken =>
 				panic! ("service handle was polled after output was taken")
 		}
 	}
