@@ -11,8 +11,9 @@ mod parallel_signallable;
 pub use parallel_signallable::ParallelSignallableTaskHandle;
 
 use std::future::Future;
+use std::pin::Pin;
 
 pub trait TaskHandle: Future
 {
-	fn abort (&mut self);
+	fn abort (self: Pin <&mut Self>);
 }

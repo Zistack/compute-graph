@@ -3,15 +3,13 @@ use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use futures::future::FusedFuture;
-use pin_project::pin_project;
 use tokio::task::{JoinHandle, JoinError};
 
 use super::TaskHandle;
 
-#[pin_project (project = ParallelCancellableTaskHandleProjection)]
 pub enum ParallelCancellableTaskHandle <T>
 {
-	Handle (#[pin] JoinHandle <T>),
+	Handle (JoinHandle <T>),
 	Finished
 }
 
@@ -47,9 +45,9 @@ impl <T> ParallelCancellableTaskHandle <T>
 impl <T> TaskHandle for ParallelCancellableTaskHandle <T>
 where Self: Future
 {
-	fn abort (&mut self)
+	fn abort (self: Pin <&mut Self>)
 	{
-		if let Self::Handle (handle) = self
+		if let Self::Handle (handle) = self . get_mut ()
 		{
 			handle . abort ();
 		}
@@ -64,10 +62,9 @@ where T: Default
 	fn poll (mut self: Pin <&mut Self>, cx: &mut Context)
 	-> Poll <<Self as Future>::Output>
 	{
-		match self . as_mut () . project ()
+		match self . as_mut () . get_mut ()
 		{
-			ParallelCancellableTaskHandleProjection::Handle (handle) =>
-				match handle . poll (cx)
+			Self::Handle (handle) => match pin! (handle) . poll (cx)
 			{
 				Poll::Pending => Poll::Pending,
 				Poll::Ready (output_result) =>
@@ -76,7 +73,7 @@ where T: Default
 					Poll::Ready (Self::unwrap_output_result (output_result))
 				}
 			},
-			ParallelCancellableTaskHandleProjection::Finished =>
+			Self::Finished =>
 				panic! ("task handle was polled after output was taken")
 		}
 	}

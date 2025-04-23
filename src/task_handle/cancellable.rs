@@ -26,11 +26,11 @@ impl <F> CancellableTaskHandle <F>
 impl <F> TaskHandle for CancellableTaskHandle <F>
 where Self: Future
 {
-	fn abort (&mut self)
+	fn abort (mut self: Pin <&mut Self>)
 	{
 		// We drop the future to abort it, and mark the handle as aborted so
 		// that awaiting it does the right thing.
-		*self = Self::Aborted;
+		self . set (Self::Aborted);
 	}
 }
 

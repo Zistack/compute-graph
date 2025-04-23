@@ -30,9 +30,10 @@ impl <F> SignallableTaskHandle <F>
 impl <F> TaskHandle for SignallableTaskHandle <F>
 where Self: Future
 {
-	fn abort (&mut self)
+	fn abort (self: Pin <&mut Self>)
 	{
-		if let Self::Future {shutdown_trigger, ..} = self
+		if let SignallableTaskHandleProjection::Future {shutdown_trigger, ..}
+			= self . project ()
 		{
 			if let Some (shutdown_trigger) = shutdown_trigger . take ()
 			{

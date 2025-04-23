@@ -3,18 +3,16 @@ use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use futures::future::FusedFuture;
-use pin_project::pin_project;
 use tokio::sync::oneshot::Sender;
 use tokio::task::{JoinHandle, JoinError};
 
 use super::TaskHandle;
 
-#[pin_project (project = ParallelSignallableTaskHandleProjection)]
 pub enum ParallelSignallableTaskHandle <T>
 {
 	Handle
 	{
-		#[pin] handle: JoinHandle <T>,
+		handle: JoinHandle <T>,
 		shutdown_trigger: Option <Sender <()>>
 	},
 	Finished
@@ -55,9 +53,9 @@ impl <T> ParallelSignallableTaskHandle <T>
 impl <T> TaskHandle for ParallelSignallableTaskHandle <T>
 where Self: Future
 {
-	fn abort (&mut self)
+	fn abort (self: Pin <&mut Self>)
 	{
-		if let Self::Handle {shutdown_trigger, ..} = self
+		if let Self::Handle {shutdown_trigger, ..} = self . get_mut ()
 		{
 			if let Some (shutdown_trigger) = shutdown_trigger . take ()
 			{
@@ -74,10 +72,9 @@ impl <T> Future for ParallelSignallableTaskHandle <T>
 	fn poll (mut self: Pin <&mut Self>, cx: &mut Context)
 	-> Poll <<Self as Future>::Output>
 	{
-		match self . as_mut () . project ()
+		match self . as_mut () . get_mut ()
 		{
-			ParallelSignallableTaskHandleProjection::Handle {handle, ..} =>
-				match handle . poll (cx)
+			Self::Handle {handle, ..} => match pin! (handle) . poll (cx)
 			{
 				Poll::Pending => Poll::Pending,
 				Poll::Ready (output_result) =>
@@ -86,7 +83,7 @@ impl <T> Future for ParallelSignallableTaskHandle <T>
 					Poll::Ready (Self::unwrap_output_result (output_result))
 				}
 			},
-			ParallelSignallableTaskHandleProjection::Finished =>
+			Self::Finished =>
 				panic! ("task handle was polled after output was taken")
 		}
 	}
