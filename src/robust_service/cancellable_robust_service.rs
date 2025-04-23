@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::{Pin, pin};
 
 use tokio::sync::watch;
 use tokio::time::{Duration, sleep};
@@ -14,7 +15,7 @@ use crate as compute_graph;
 
 async fn replace_down_service <C, T>
 (
-	constructor_handle: C,
+	constructor_handle: Pin <&mut C>,
 	service_handle: &mut CancellableServiceHandle <T>
 )
 where
@@ -26,11 +27,11 @@ where
 
 async fn replace_service <C, T>
 (
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut CancellableServiceHandle <T>
 )
 where
-	C: Future <Output = CancellableServiceHandle <T>> + Unpin,
+	C: Future <Output = CancellableServiceHandle <T>>,
 	T: Default + ServiceExitStatus + Unpin
 {
 	select!
@@ -40,7 +41,7 @@ where
 			constructor_handle,
 			service_handle
 		) . await,
-		new_service_handle = &mut constructor_handle =>
+		new_service_handle = constructor_handle . as_mut () =>
 		{
 			let mut old_service_handle =
 				std::mem::replace (service_handle, new_service_handle);
@@ -53,7 +54,7 @@ where
 
 async fn replace_down_service_with_status_reporting <C, T>
 (
-	constructor_handle: C,
+	constructor_handle: Pin <&mut C>,
 	service_handle: &mut CancellableServiceHandle <T>,
 	status_sender: &mut watch::Sender <ServiceState>
 )
@@ -68,12 +69,12 @@ where
 
 async fn replace_service_with_status_reporting <C, T>
 (
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut CancellableServiceHandle <T>,
 	status_sender: &mut watch::Sender <ServiceState>
 )
 where
-	C: Future <Output = CancellableServiceHandle <T>> + Unpin,
+	C: Future <Output = CancellableServiceHandle <T>>,
 	T: Default + ServiceExitStatus + Unpin
 {
 	select!
@@ -84,7 +85,7 @@ where
 			service_handle,
 			status_sender
 		) . await,
-		new_service_handle = &mut constructor_handle =>
+		new_service_handle = constructor_handle . as_mut () =>
 		{
 			let mut old_service_handle =
 				std::mem::replace (service_handle, new_service_handle);
@@ -136,7 +137,7 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 		{
 			_ = &mut service_handle => replace_down_service
 			(
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await
 		}
@@ -156,12 +157,12 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 		{
 			_ = &mut service_handle => replace_down_service
 			(
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await,
 			_ = sleep (replacement_interval) => replace_service
 			(
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await
 		}
@@ -187,7 +188,7 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 
 				replace_down_service_with_status_reporting
 				(
-					self . construct (),
+					pin! (self . construct ()),
 					&mut service_handle,
 					&mut status_sender
 				) . await
@@ -216,14 +217,14 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 
 				replace_down_service_with_status_reporting
 				(
-					self . construct (),
+					pin! (self . construct ()),
 					&mut service_handle,
 					&mut status_sender
 				) . await
 			},
 			_ = sleep (replacement_interval) => replace_service_with_status_reporting
 			(
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle,
 				&mut status_sender
 			) . await

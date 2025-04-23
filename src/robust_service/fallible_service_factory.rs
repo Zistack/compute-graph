@@ -9,14 +9,11 @@ pub trait CancellableFallibleServiceFactory
 	fn construct (&mut self)
 	-> impl TaskHandle
 		+ Future <Output = CancellableServiceHandle <WithStatus>>
-		+ Unpin
 		+ Send;
 }
 
 pub trait SignallableFallibleServiceFactory
 {
-	// Rare case of having to explain to the compiler that the returned service
-	// should _not_ borrow from self.
 	fn construct (&mut self)
 	-> impl TaskHandle
 		+ Future
@@ -30,6 +27,5 @@ pub trait SignallableFallibleServiceFactory
 					+ 'static
 			>
 		>
-		+ Unpin
 		+ Send;
 }

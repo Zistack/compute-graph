@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::{Pin, pin};
 
 use tokio::sync::{oneshot, watch};
 use tokio::time::{Duration, sleep};
@@ -18,9 +19,10 @@ macro_rules! shutdown_constructor_handle
 	($constructor_handle: expr) =>
 	{
 		{
-			$constructor_handle . abort ();
+			let mut constructor_handle = $constructor_handle;
 
-			if let Some (mut new_service_handle) = $constructor_handle . await
+			constructor_handle . as_mut () . abort ();
+			if let Some (mut new_service_handle) = constructor_handle . await
 			{
 				new_service_handle . shutdown ();
 				new_service_handle . await;
@@ -34,18 +36,18 @@ macro_rules! shutdown_constructor_handle
 async fn replace_down_service <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut S
 )
 -> ShouldTerminateClean
 where
-	C: TaskHandle + Future <Output = Option <S>> + Unpin,
-	S: ServiceHandle + Unpin
+	C: TaskHandle + Future <Output = Option <S>>,
+	S: ServiceHandle
 {
 	select!
 	{
 		_ = &mut *shutdown => shutdown_constructor_handle! (constructor_handle),
-		constructor_result = &mut constructor_handle =>
+		constructor_result = constructor_handle . as_mut () =>
 			*service_handle = constructor_result . unwrap ()
 	}
 }
@@ -53,12 +55,12 @@ where
 async fn replace_service <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut S
 )
 -> ShouldTerminateClean
 where
-	C: TaskHandle + Future <Output = Option <S>> + Unpin,
+	C: TaskHandle + Future <Output = Option <S>>,
 	S: ServiceHandle + Unpin
 {
 	select!
@@ -70,7 +72,7 @@ where
 			constructor_handle,
 			service_handle
 		) . await,
-		constructor_result = &mut constructor_handle =>
+		constructor_result = constructor_handle . as_mut () =>
 		{
 			// The constructor should always return Some (S) unless it was
 			// aborted.
@@ -87,19 +89,19 @@ where
 pub async fn replace_down_service_with_status_reporting <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut S,
 	status_sender: &mut watch::Sender <ServiceState>
 )
 -> ShouldTerminateClean
 where
-	C: TaskHandle + Future <Output = Option <S>> + Unpin,
-	S: ServiceHandle + Unpin
+	C: TaskHandle + Future <Output = Option <S>>,
+	S: ServiceHandle
 {
 	select!
 	{
 		_ = &mut *shutdown => shutdown_constructor_handle! (constructor_handle),
-		constructor_result = &mut constructor_handle =>
+		constructor_result = constructor_handle . as_mut () =>
 		{
 			// The constructor should always return Some (S) unless it was
 			// aborted.
@@ -113,13 +115,13 @@ where
 pub async fn replace_service_with_status_reporting <C, S>
 (
 	shutdown: &mut oneshot::Receiver <()>,
-	mut constructor_handle: C,
+	mut constructor_handle: Pin <&mut C>,
 	service_handle: &mut S,
 	status_sender: &mut watch::Sender <ServiceState>
 )
 -> ShouldTerminateClean
 where
-	C: TaskHandle + Future <Output = Option <S>> + Unpin,
+	C: TaskHandle + Future <Output = Option <S>>,
 	S: ServiceHandle + Unpin
 {
 	select!
@@ -137,7 +139,7 @@ where
 				status_sender
 			) . await
 		},
-		constructor_result = &mut constructor_handle =>
+		constructor_result = constructor_handle . as_mut () =>
 		{
 			// The constructor should always return Some (S) unless it was
 			// aborted.
@@ -191,7 +193,7 @@ macro_rules! init_service_handle_with_shutdown
 			{
 				_ = &mut $shutdown =>
 				{
-					constructor_handle . abort ();
+					constructor_handle . as_mut () . abort ();
 					if let Some (mut service_handle) = constructor_handle . await
 					{
 						service_handle . shutdown ();
@@ -215,7 +217,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 	{
 		let mut service_handle = init_service_handle_with_shutdown!
 		(
-			self . construct (),
+			pin! (self . construct ()),
 			shutdown
 		);
 
@@ -225,7 +227,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 			_ = &mut service_handle => replace_down_service
 			(
 				&mut shutdown,
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await
 		};
@@ -246,7 +248,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 	{
 		let mut service_handle = init_service_handle_with_shutdown!
 		(
-			self . construct (),
+			pin! (self . construct ()),
 			shutdown
 		);
 
@@ -256,13 +258,13 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 			_ = &mut service_handle => replace_down_service
 			(
 				&mut shutdown,
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await,
 			_ = sleep (replacement_interval) => replace_service
 			(
 				&mut shutdown,
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle
 			) . await
 		};
@@ -283,7 +285,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 	{
 		let mut service_handle = init_service_handle_with_shutdown!
 		(
-			self . construct (),
+			pin! (self . construct ()),
 			shutdown
 		);
 
@@ -299,7 +301,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 				replace_down_service_with_status_reporting
 				(
 					&mut shutdown,
-					self . construct (),
+					pin! (self . construct ()),
 					&mut service_handle,
 					&mut status_sender
 				) . await
@@ -323,7 +325,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 	{
 		let mut service_handle = init_service_handle_with_shutdown!
 		(
-			self . construct (),
+			pin! (self . construct ()),
 			shutdown
 		);
 
@@ -339,7 +341,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 				replace_down_service_with_status_reporting
 				(
 					&mut shutdown,
-					self . construct (),
+					pin! (self . construct ()),
 					&mut service_handle,
 					&mut status_sender
 				) . await
@@ -348,7 +350,7 @@ where T: SignallableFallibleServiceFactory + Send + 'static
 				replace_service_with_status_reporting
 			(
 				&mut shutdown,
-				self . construct (),
+				pin! (self . construct ()),
 				&mut service_handle,
 				&mut status_sender
 			) . await
