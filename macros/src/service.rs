@@ -2,7 +2,6 @@ use syn::{
 	FnArg,
 	Ident,
 	ItemFn,
-	ReturnType,
 	Token,
 	parse,
 	parse_quote
