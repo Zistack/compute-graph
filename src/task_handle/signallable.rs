@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use futures::future::FusedFuture;
 use pin_project::pin_project;
 use tokio::sync::oneshot::Sender;
 
@@ -27,7 +28,7 @@ impl <F> SignallableTaskHandle <F>
 }
 
 impl <F> TaskHandle for SignallableTaskHandle <F>
-where F: Future
+where Self: Future
 {
 	fn abort (&mut self)
 	{
@@ -62,6 +63,19 @@ where F: Future
 			},
 			SignallableTaskHandleProjection::Finished =>
 				panic! ("task handle was polled after output was taken")
+		}
+	}
+}
+
+impl <F> FusedFuture for SignallableTaskHandle <F>
+where Self: Future
+{
+	fn is_terminated (&self) -> bool
+	{
+		match self
+		{
+			Self::Future {..} => false,
+			Self::Finished => true
 		}
 	}
 }

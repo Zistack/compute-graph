@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
+use futures::future::FusedFuture;
 use pin_project::pin_project;
 use tokio::sync::oneshot::Sender;
 use tokio::task::{JoinHandle, JoinError};
@@ -87,6 +88,19 @@ impl <T> Future for ParallelSignallableTaskHandle <T>
 			},
 			ParallelSignallableTaskHandleProjection::Finished =>
 				panic! ("task handle was polled after output was taken")
+		}
+	}
+}
+
+impl <T> FusedFuture for ParallelSignallableTaskHandle <T>
+where Self: Future
+{
+	fn is_terminated (&self) -> bool
+	{
+		match self
+		{
+			Self::Handle {..} => false,
+			Self::Finished => true
 		}
 	}
 }

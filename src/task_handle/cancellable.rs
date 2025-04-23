@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use futures::future::FusedFuture;
 use pin_project::pin_project;
 
 use super::TaskHandle;
@@ -61,6 +62,20 @@ where
 			}
 			CancellableTaskHandleProjection::Finished =>
 				panic! ("task handle was polled after output was taken")
+		}
+	}
+}
+
+impl <F> FusedFuture for CancellableTaskHandle <F>
+where Self: Future
+{
+	fn is_terminated (&self) -> bool
+	{
+		match self
+		{
+			Self::Future (_) => false,
+			Self::Aborted => false,
+			Self::Finished => true
 		}
 	}
 }
