@@ -167,8 +167,7 @@ pub fn task_impl
 	let attr_args = errors . handle_in
 	(
 		||
-		NestedMeta::parse_meta_list (attr . into ())
-			. map_err (|e| e . into ())
+		NestedMeta::parse_meta_list (attr . into ()) . map_err (|e| e . into ())
 	);
 
 	let task_input = attr_args . and_then
