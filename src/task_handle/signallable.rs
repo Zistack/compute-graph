@@ -1,16 +1,18 @@
 use std::future::Future;
-use std::pin::{Pin, pin};
+use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use pin_project::pin_project;
 use tokio::sync::oneshot::Sender;
 
 use super::TaskHandle;
 
+#[pin_project (project = SignallableTaskHandleProjection)]
 pub enum SignallableTaskHandle <F>
 {
 	Future
 	{
-		future: F,
+		#[pin] future: F,
 		shutdown_trigger: Option <Sender <()>>
 	},
 	Finished
@@ -25,7 +27,7 @@ impl <F> SignallableTaskHandle <F>
 }
 
 impl <F> TaskHandle for SignallableTaskHandle <F>
-where F: Future + Unpin
+where F: Future
 {
 	fn abort (&mut self)
 	{
@@ -40,27 +42,25 @@ where F: Future + Unpin
 }
 
 impl <F> Future for SignallableTaskHandle <F>
-where F: Future + Unpin
+where F: Future
 {
 	type Output = F::Output;
 
-	fn poll (self: Pin <&mut Self>, cx: &mut Context)
-	-> Poll <Self::Output>
+	fn poll (mut self: Pin <&mut Self>, cx: &mut Context) -> Poll <Self::Output>
 	{
-		let mut_self = self . get_mut ();
-
-		match std::mem::replace (mut_self, Self::Finished)
+		match self . as_mut () . project ()
 		{
-			Self::Future {mut future, shutdown_trigger} => match pin! (&mut future) . poll (cx)
+			SignallableTaskHandleProjection::Future {future, ..} =>
+				match future . poll (cx)
 			{
-				Poll::Pending =>
+				Poll::Pending => Poll::Pending,
+				Poll::Ready (output) =>
 				{
-					*mut_self = Self::Future {future, shutdown_trigger};
-					Poll::Pending
-				},
-				Poll::Ready (output) => Poll::Ready (output)
+					self . set (Self::Finished);
+					Poll::Ready (output)
+				}
 			},
-			Self::Finished =>
+			SignallableTaskHandleProjection::Finished =>
 				panic! ("task handle was polled after output was taken")
 		}
 	}

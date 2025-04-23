@@ -1,14 +1,16 @@
 use darling::{FromMeta, Error};
 use darling::ast::NestedMeta;
 use darling::util::Flag;
-use syn::{Ident, ItemFn, ReturnType, parse, parse_quote};
+use syn::{Ident, ItemFn, parse, parse_quote};
 use quote::{format_ident, quote};
+
+use crate::util::map_return_type;
 
 #[derive (FromMeta)]
 struct TaskInput
 {
-	shutdown_object: Option <Ident>,
-	forking_flag: Flag
+	shutdown: Option <Ident>,
+	forking: Flag
 }
 
 fn gen_cancellable_task (function: ItemFn, forking: bool)
@@ -16,23 +18,47 @@ fn gen_cancellable_task (function: ItemFn, forking: bool)
 {
 	let ItemFn {attrs, vis, mut sig, block} = function;
 
-	let task_handle_type = match forking
+	let (task_handle_type, new_return_type) = match forking
 	{
-		false => quote! (compute_graph::task_handle::CancellableTaskHandle),
-		true => quote! (compute_graph::task_handle::ParallelCancellableTaskHandle)
+		false =>
+		{
+			let task_handle_type = quote!
+			(
+				compute_graph::task_handle::CancellableTaskHandle
+			);
+
+			let new_return_type = map_return_type
+			(
+				sig . output,
+				|ty| parse_quote!
+				(
+					#task_handle_type
+					<
+						impl std::future::Future <Output = #ty>
+					>
+				)
+			);
+
+			(task_handle_type, new_return_type)
+		},
+		true =>
+		{
+			let task_handle_type = quote!
+			(
+				compute_graph::task_handle::ParallelCancellableTaskHandle
+			);
+
+			let new_return_type = map_return_type
+			(
+				sig . output,
+				|ty| parse_quote! (#task_handle_type <#ty>)
+			);
+
+			(task_handle_type, new_return_type)
+		}
 	};
 
-	sig . output = match sig . output
-	{
-		ReturnType::Default => parse_quote!
-		(
-			-> #task_handle_type <()>
-		),
-		ReturnType::Type (arrow_token, ty) => parse_quote!
-		(
-			#arrow_token #task_handle_type <#ty>
-		)
-	};
+	sig . output = new_return_type;
 
 	quote!
 	{
@@ -56,23 +82,47 @@ fn gen_signallable_task
 
 	let shutdown_trigger = format_ident! ("{}_trigger", shutdown_object);
 
-	let task_handle_type = match forking
+	let (task_handle_type, new_return_type) = match forking
 	{
-		false => quote! (compute_graph::task_handle::SignallableTaskHandle),
-		true => quote! (compute_graph::task_handle::ParallelSignallableTaskHandle)
+		false =>
+		{
+			let task_handle_type = quote!
+			(
+				compute_graph::task_handle::SignallableTaskHandle
+			);
+
+			let new_return_type = map_return_type
+			(
+				sig . output,
+				|ty| parse_quote!
+				(
+					#task_handle_type
+					<
+						impl std::future::Future <Output = #ty>
+					>
+				)
+			);
+
+			(task_handle_type, new_return_type)
+		},
+		true =>
+		{
+			let task_handle_type = quote!
+			(
+				compute_graph::task_handle::ParallelSignallableTaskHandle
+			);
+
+			let new_return_type = map_return_type
+			(
+				sig . output,
+				|ty| parse_quote! (#task_handle_type <#ty>)
+			);
+
+			(task_handle_type, new_return_type)
+		}
 	};
 
-	sig . output = match sig . output
-	{
-		ReturnType::Default => parse_quote!
-		(
-			-> #task_handle_type <()>
-		),
-		ReturnType::Type (arrow_token, ty) => parse_quote!
-		(
-			#arrow_token #task_handle_type <#ty>
-		)
-	};
+	sig . output = new_return_type;
 
 	quote!
 	{
@@ -133,12 +183,11 @@ pub fn task_impl
 
 	match (task_input, function)
 	{
-		(Some (TaskInput {shutdown_object, forking_flag}), Some (function)) =>
+		(Some (TaskInput {shutdown, forking}), Some (function)) =>
 		{
 			errors . finish () . unwrap ();
 
-			task_inner (function, shutdown_object, forking_flag . is_present ())
-				. into ()
+			task_inner (function, shutdown, forking . is_present ()) . into ()
 		},
 		_ => errors . finish () . unwrap_err () . write_errors () . into ()
 	}

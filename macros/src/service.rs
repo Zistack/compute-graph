@@ -20,7 +20,7 @@ mod kw
 #[derive (Parse)]
 struct ShutdownObject
 {
-	shutdown_marker_token: kw::shutdown,
+	shutdown_token: kw::shutdown,
 	eq_token: Token! [=],
 	ident: Ident
 }

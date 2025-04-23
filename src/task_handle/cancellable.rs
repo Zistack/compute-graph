@@ -1,12 +1,16 @@
 use std::future::Future;
-use std::pin::{Pin, pin};
+use std::pin::Pin;
 use std::task::{Context, Poll};
+
+use pin_project::pin_project;
 
 use super::TaskHandle;
 
+#[pin_project (project = CancellableTaskHandleProjection)]
 pub enum CancellableTaskHandle <F>
 {
-	Future (F),
+	Future (#[pin] F),
+	Aborted,
 	Finished
 }
 
@@ -19,36 +23,43 @@ impl <F> CancellableTaskHandle <F>
 }
 
 impl <F> TaskHandle for CancellableTaskHandle <F>
-where F: Future + Unpin
+where Self: Future
 {
 	fn abort (&mut self)
 	{
-		// We drop the future to abort it.
-		*self = Self::Finished;
+		// We drop the future to abort it, and mark the handle as aborted so
+		// that awaiting it does the right thing.
+		*self = Self::Aborted;
 	}
 }
 
 impl <F> Future for CancellableTaskHandle <F>
-where F: Future + Unpin
+where
+	F: Future,
+	F::Output: Default
 {
 	type Output = F::Output;
 
-	fn poll (self: Pin <&mut Self>, cx: &mut Context) -> Poll <Self::Output>
+	fn poll (mut self: Pin <&mut Self>, cx: &mut Context) -> Poll <Self::Output>
 	{
-		let mut_self = self . get_mut ();
-
-		match std::mem::replace (mut_self, Self::Finished)
+		match self . as_mut () . project ()
 		{
-			Self::Future (mut future) => match pin! (&mut future) . poll (cx)
+			CancellableTaskHandleProjection::Future (future) =>
+				match future . poll (cx)
 			{
-				Poll::Pending =>
+				Poll::Pending => Poll::Pending,
+				Poll::Ready (output) =>
 				{
-					*mut_self = Self::Future (future);
-					Poll::Pending
-				},
-				Poll::Ready (output) => Poll::Ready (output)
+					self . set (Self::Finished);
+					Poll::Ready (output)
+				}
+			},
+			CancellableTaskHandleProjection::Aborted =>
+			{
+				self . set (Self::Finished);
+				Poll::Ready (F::Output::default ())
 			}
-			Self::Finished =>
+			CancellableTaskHandleProjection::Finished =>
 				panic! ("task handle was polled after output was taken")
 		}
 	}

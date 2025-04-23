@@ -17,6 +17,7 @@ bytes = {version = "1.10"}
 rand = {version = "0.9"}
 tokio-stream = {version = "0.1"}
 tokio-util = {version = "0.7"}
+pin-project = {version = "1"}
 
 [dev-dependencies]
 tokio = {version = "1", features = ["rt-multi-thread"]}

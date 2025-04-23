@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use syn::{Ident, Pat, PatIdent, PatType, Type};
+use syn::{Ident, Pat, PatIdent, PatType, ReturnType, Type, Token, parse_quote};
 use syn::parse::Result;
 
 pub fn scan_arg <M, T> (arg: &mut PatType, mut matcher: M)
@@ -34,4 +34,22 @@ where M: FnMut (&Ident, &TokenStream) -> Result <Option <T>>,
 		matcher (macro_ident, macro_tokens)?
 			. map (|parsed_tokens| (pat_ident, parsed_tokens))
 	)
+}
+
+pub fn map_return_type <F> (output: ReturnType, map: F) -> ReturnType
+where F: FnOnce (Type) -> Type
+{
+	match output
+	{
+		ReturnType::Default =>
+		{
+			let ty = map (parse_quote! (()));
+			ReturnType::Type (<Token! [->]>::default (), Box::new (ty))
+		},
+		ReturnType::Type (arrow_token, ty) =>
+		{
+			let ty = map (*ty);
+			ReturnType::Type (arrow_token, Box::new (ty))
+		}
+	}
 }
