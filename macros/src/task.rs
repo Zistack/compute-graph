@@ -129,7 +129,7 @@ fn gen_signallable_task
 		#(#attrs)*
 		#vis #sig
 		{
-			let (#shutdown_trigger, #shutdown_object) =
+			let (#shutdown_trigger, mut #shutdown_object) =
 				tokio::sync::oneshot::channel ();
 
 			#task_handle_type::new (async move #block, #shutdown_trigger)
