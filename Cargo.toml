@@ -12,7 +12,7 @@ serde_json = {version = "1.0"}
 serde = {version = "1.0"}
 futures = {version = "0.3"}
 tungstenite = {version = "0.26"}
-tokio-tungstenite = {version = "0.26"}
+tokio-tungstenite = {version = "0.26", features = ["connect", "rustls-tls-webpki-roots"]}
 bytes = {version = "1.10"}
 rand = {version = "0.9"}
 tokio-stream = {version = "0.1"}
