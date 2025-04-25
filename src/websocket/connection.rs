@@ -20,7 +20,7 @@ use crate as compute_graph;
 
 #[expand_streams]
 #[service (shutdown = shutdown)]
-pub async fn websocket_node_wtih_pings <IF, OF, IS, OS, S>
+pub async fn websocket_node_with_pings <IF, OF, IS, OS, S>
 (
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	outputs: output! (OS <- OF::External),
