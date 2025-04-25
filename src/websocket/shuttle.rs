@@ -27,7 +27,16 @@ where F: InputFormat
 		ping_bytess -> ping_bytes =>
 			feed! (websocket, Message::Ping (ping_bytes)),
 		inputs -> input =>
-			feed! (websocket?, F::convert (input . into ()))
+		{
+			if let Some (message) = F::convert (input . into ())
+			{
+				feed! (websocket?, message)
+			}
+			else
+			{
+				ShouldTerminateWithStatus::from (None)
+			}
+		}
 	}
 		. with_value (websocket)
 }
@@ -45,7 +54,17 @@ where F: InputFormat
 	event_loop_fallible!
 	{
 		_ = &mut shutdown => ExitStatus::Clean,
-		inputs -> input? => feed! (websocket, F::convert (input . into ()))
+		inputs -> input =>
+		{
+			if let Some (message) = F::convert (input . into ())
+			{
+				feed! (websocket?, message)
+			}
+			else
+			{
+				ShouldTerminateWithStatus::from (None)
+			}
+		}
 	}
 		. with_value (websocket)
 }

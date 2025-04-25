@@ -6,7 +6,7 @@ pub trait InputFormat
 {
 	type Intermediate;
 
-	fn convert (i: Self::Intermediate) -> Message;
+	fn convert (i: Self::Intermediate) -> Option <Message>;
 }
 
 pub trait OutputFormat
@@ -24,9 +24,9 @@ impl InputFormat for Text
 {
 	type Intermediate = Utf8Bytes;
 
-	fn convert (i: Self::Intermediate) -> Message
+	fn convert (i: Self::Intermediate) -> Option <Message>
 	{
-		Message::Text (i)
+		Some (Message::Text (i))
 	}
 }
 
@@ -59,9 +59,9 @@ impl InputFormat for Binary
 {
 	type Intermediate = Bytes;
 
-	fn convert (i: Self::Intermediate) -> Message
+	fn convert (i: Self::Intermediate) -> Option <Message>
 	{
-		Message::Binary (i)
+		Some (Message::Binary (i))
 	}
 }
 
