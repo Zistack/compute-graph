@@ -17,6 +17,7 @@ use crate as compute_graph;
 
 pub struct WebSocketClientSource <OF, R, OS>
 {
+	output_format: OF,
 	connection_config: ConnectionConfig <R>,
 	output: OS,
 	_of: PhantomData <OF>
@@ -24,10 +25,17 @@ pub struct WebSocketClientSource <OF, R, OS>
 
 impl <OF, R, OS> WebSocketClientSource <OF, R, OS>
 {
-	pub fn new (connection_config: ConnectionConfig <R>, output: OS) -> Self
+	pub fn new
+	(
+		output_format: OF,
+		connection_config: ConnectionConfig <R>,
+		output: OS
+	)
+	-> Self
 	{
 		Self
 		{
+			output_format,
 			connection_config,
 			output,
 			_of: PhantomData::default ()
@@ -38,12 +46,11 @@ impl <OF, R, OS> WebSocketClientSource <OF, R, OS>
 impl <OF, R, OS> SignallableFallibleServiceFactory
 for WebSocketClientSource <OF, R, OS>
 where
-	OF: OutputFormat,
+	OF: Clone + OutputFormat + Send + 'static,
 	R: Clone + IntoClientRequest + Unpin + Send + Sync,
 	OS: Clone + SinkExt <OF::External> + Unpin + Debug + Send + 'static,
 	OF::External: Send,
-	OS::Error: Display,
-	Self: Send
+	OS::Error: Display
 {
 	#[task (shutdown = shutdown)]
 	async fn construct (&mut self)
@@ -54,8 +61,9 @@ where
 			. map
 		(
 			|websocket_stream|
-			websocket_source::<OF, OS, _>
+			websocket_source
 			(
+				self . output_format . clone (),
 				self . output . clone (),
 				websocket_stream
 			)

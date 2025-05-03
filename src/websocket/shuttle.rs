@@ -14,6 +14,7 @@ use crate as compute_graph;
 #[service (shutdown = shutdown)]
 pub async fn shuttle_input_with_pings <F, IS, PS, WS>
 (
+	_input_format: F,
 	inputs: input! (IS -> impl Into <F::Intermediate>),
 	ping_bytess: input! (PS -> Bytes),
 	websocket: output! (WS <- Message)
@@ -45,6 +46,7 @@ where F: InputFormat
 #[service (shutdown = shutdown)]
 pub async fn shuttle_input <F, IS, WS>
 (
+	_input_format: F,
 	inputs: input! (IS -> impl Into <F::Intermediate>),
 	websocket: output! (WS <- Message)
 )
@@ -73,6 +75,7 @@ where F: InputFormat
 #[service (shutdown = shutdown)]
 pub async fn shuttle_output_with_pongs <F, WS, OS, PS>
 (
+	_output_format: F,
 	websocket: input! (WS -> Result <Message>),
 	outputs: output! (OS <- F::External),
 	pong_bytess: output! (PS <- Bytes)
@@ -144,6 +147,7 @@ where F: OutputFormat
 #[service (shutdown = shutdown)]
 pub async fn shuttle_output <F, WS, OS>
 (
+	_output_format: F,
 	websocket: input! (WS -> Result <Message>),
 	outputs: output! (OS <- F::External)
 )

@@ -17,6 +17,8 @@ use crate as compute_graph;
 
 pub struct WebSocketClientNode <IF, OF, R, IS, OS>
 {
+	input_format: IF,
+	output_format: OF,
 	connection_config: ConnectionConfig <R>,
 	input: IS,
 	output: OS,
@@ -26,11 +28,20 @@ pub struct WebSocketClientNode <IF, OF, R, IS, OS>
 
 impl <IF, OF, R, IS, OS> WebSocketClientNode <IF, OF, R, IS, OS>
 {
-	pub fn new (connection_config: ConnectionConfig <R>, input: IS, output: OS)
+	pub fn new
+	(
+		input_format: IF,
+		output_format: OF,
+		connection_config: ConnectionConfig <R>,
+		input: IS,
+		output: OS
+	)
 	-> Self
 	{
 		Self
 		{
+			input_format,
+			output_format,
 			connection_config,
 			input,
 			output,
@@ -43,15 +54,14 @@ impl <IF, OF, R, IS, OS> WebSocketClientNode <IF, OF, R, IS, OS>
 impl <IF, OF, R, IS, OS> SignallableFallibleServiceFactory
 for WebSocketClientNode <IF, OF, R, IS, OS>
 where
-	IF: InputFormat,
-	OF: OutputFormat,
+	IF: Clone + InputFormat + Send + 'static,
+	OF: Clone + OutputFormat + Send + 'static,
 	R: Clone + IntoClientRequest + Unpin + Send + Sync,
 	IS: Clone + StreamExt + Unpin + Debug + Send + 'static,
 	IS::Item: Into <IF::Intermediate> + Send,
 	OS: Clone + SinkExt <OF::External> + Unpin + Debug + Send + 'static,
 	OF::External: Send,
-	OS::Error: Display,
-	Self: Send
+	OS::Error: Display
 {
 	#[task (shutdown = shutdown)]
 	async fn construct (&mut self)
@@ -62,8 +72,10 @@ where
 			. map
 		(
 			|websocket_stream|
-			websocket_node::<IF, OF, IS, OS, _>
+			websocket_node
 			(
+				self . input_format . clone (),
+				self . output_format . clone (),
 				self . input . clone (),
 				self . output . clone (),
 				websocket_stream

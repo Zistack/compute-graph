@@ -22,6 +22,8 @@ use crate as compute_graph;
 #[service (shutdown = shutdown)]
 pub async fn websocket_node_with_pings <IF, OF, IS, OS, S>
 (
+	input_format: IF,
+	output_format: OF,
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>,
@@ -30,8 +32,8 @@ pub async fn websocket_node_with_pings <IF, OF, IS, OS, S>
 )
 -> WithStatus
 where
-	IF: InputFormat,
-	OF: OutputFormat,
+	IF: InputFormat + Send,
+	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
@@ -40,15 +42,17 @@ where
 	let (ping_sender, ping_receiver) = mpsc::channel (1);
 	let (pong_sender, pong_receiver) = mpsc::channel (1);
 
-	let shuttle_input_handle = shuttle_input_with_pings::<IF, _, _, _>
+	let shuttle_input_handle = shuttle_input_with_pings
 	(
+		input_format,
 		inputs,
 		ReceiverStream::new (ping_receiver),
 		websocket_sink
 	);
 
-	let shuttle_output_handle = shuttle_output_with_pongs::<OF, _, _, _>
+	let shuttle_output_handle = shuttle_output_with_pongs
 	(
+		output_format,
 		websocket_stream,
 		outputs,
 		PollSender::new (pong_sender)
@@ -90,22 +94,24 @@ where
 #[service (shutdown = shutdown)]
 pub async fn websocket_node <IF, OF, IS, OS, S>
 (
+	input_format: IF,
+	output_format: OF,
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>
 )
 -> WithStatus
 where
-	IF: InputFormat,
-	OF: OutputFormat,
+	IF: InputFormat + Send,
+	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
 	let shuttle_input_handle =
-		shuttle_input::<IF, _, _> (inputs, websocket_sink);
+		shuttle_input (input_format, inputs, websocket_sink);
 	let shuttle_output_handle =
-		shuttle_output::<OF, _, _> (websocket_stream, outputs);
+		shuttle_output (output_format, websocket_stream, outputs);
 
 	let (input_report, output_report) = join_services!
 	(
@@ -132,6 +138,7 @@ where
 #[service (shutdown = shutdown)]
 pub async fn websocket_source_with_pings <OF, OS, S>
 (
+	output_format: OF,
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>,
 	ping_interval: Duration,
@@ -139,15 +146,16 @@ pub async fn websocket_source_with_pings <OF, OS, S>
 )
 -> WithStatus
 where
-	OF: OutputFormat,
+	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
 	let (pong_sender, pong_receiver) = mpsc::channel (1);
 
-	let shuttle_output_handle = shuttle_output_with_pongs::<OF, _, _, _>
+	let shuttle_output_handle = shuttle_output_with_pongs
 	(
+		output_format,
 		websocket_stream,
 		outputs,
 		PollSender::new (pong_sender)
@@ -186,18 +194,19 @@ where
 #[service (shutdown = shutdown)]
 pub async fn websocket_source <OF, OS, S>
 (
+	output_format: OF,
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>
 )
 -> WithStatus
 where
-	OF: OutputFormat,
+	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (mut websocket_sink, websocket_stream) = websocket . split ();
 
 	let shuttle_output_handle =
-		shuttle_output::<OF, _, _> (websocket_stream, outputs);
+		shuttle_output (output_format, websocket_stream, outputs);
 
 	let (output_report,) = join_services! (?shutdown, shuttle_output_handle);
 
@@ -217,6 +226,7 @@ where
 #[service (shutdown = shutdown)]
 pub async fn websocket_sink_with_pings <IF, IS, S>
 (
+	input_format: IF,
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	websocket: WebSocketStream <S>,
 	ping_interval: Duration,
@@ -224,15 +234,16 @@ pub async fn websocket_sink_with_pings <IF, IS, S>
 )
 -> WithStatus
 where
-	IF: InputFormat,
+	IF: InputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
 	let (ping_sender, ping_receiver) = mpsc::channel (1);
 
-	let shuttle_input_handle = shuttle_input_with_pings::<IF, _, _, _>
+	let shuttle_input_handle = shuttle_input_with_pings
 	(
+		input_format,
 		inputs,
 		ReceiverStream::new (ping_receiver),
 		websocket_sink
@@ -271,18 +282,19 @@ where
 #[service (shutdown = shutdown)]
 pub async fn websocket_sink <IF, IS, S>
 (
+	input_format: IF,
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	websocket: WebSocketStream <S>
 )
 -> WithStatus
 where
-	IF: InputFormat,
+	IF: InputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
 	let shuttle_input_handle =
-		shuttle_input::<IF, _, _> (inputs, websocket_sink);
+		shuttle_input (input_format, inputs, websocket_sink);
 	let drain_handle = drain_output (websocket_stream);
 
 	let (input_report, output_report) = join_services!

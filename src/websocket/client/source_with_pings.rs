@@ -17,6 +17,7 @@ use crate as compute_graph;
 
 pub struct WebSocketClientSourceWithPings <OF, R, OS>
 {
+	output_format: OF,
 	connection_config: ConnectionConfig <R>,
 	output: OS,
 	ping_config: PingConfig,
@@ -27,6 +28,7 @@ impl <OF, R, OS> WebSocketClientSourceWithPings <OF, R, OS>
 {
 	pub fn new
 	(
+		output_format: OF,
 		connection_config: ConnectionConfig <R>,
 		output: OS,
 		ping_config: PingConfig
@@ -35,6 +37,7 @@ impl <OF, R, OS> WebSocketClientSourceWithPings <OF, R, OS>
 	{
 		Self
 		{
+			output_format,
 			connection_config,
 			output,
 			ping_config,
@@ -46,12 +49,11 @@ impl <OF, R, OS> WebSocketClientSourceWithPings <OF, R, OS>
 impl <OF, R, OS> SignallableFallibleServiceFactory
 for WebSocketClientSourceWithPings <OF, R, OS>
 where
-	OF: OutputFormat,
+	OF: Clone + OutputFormat + Send + 'static,
 	R: Clone + IntoClientRequest + Unpin + Send + Sync,
 	OS: Clone + SinkExt <OF::External> + Unpin + Debug + Send + 'static,
 	OF::External: Send,
-	OS::Error: Display,
-	Self: Send
+	OS::Error: Display
 {
 	#[task (shutdown = shutdown)]
 	async fn construct (&mut self)
@@ -62,8 +64,9 @@ where
 			. map
 		(
 			|websocket_stream|
-			websocket_source_with_pings::<OF, OS, _>
+			websocket_source_with_pings
 			(
+				self . output_format . clone (),
 				self . output . clone (),
 				websocket_stream,
 				self . ping_config . ping_interval,

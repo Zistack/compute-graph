@@ -17,6 +17,7 @@ use crate as compute_graph;
 
 pub struct WebSocketClientSink <IF, R, IS>
 {
+	input_format: IF,
 	connection_config: ConnectionConfig <R>,
 	input: IS,
 	_if: PhantomData <IF>
@@ -24,10 +25,17 @@ pub struct WebSocketClientSink <IF, R, IS>
 
 impl <IF, R, IS> WebSocketClientSink <IF, R, IS>
 {
-	pub fn new (connection_config: ConnectionConfig <R>, input: IS) -> Self
+	pub fn new
+	(
+		input_format: IF,
+		connection_config: ConnectionConfig <R>,
+		input: IS
+	)
+	-> Self
 	{
 		Self
 		{
+			input_format,
 			connection_config,
 			input,
 			_if: PhantomData::default ()
@@ -38,11 +46,10 @@ impl <IF, R, IS> WebSocketClientSink <IF, R, IS>
 impl <IF, R, IS> SignallableFallibleServiceFactory
 for WebSocketClientSink <IF, R, IS>
 where
-	IF: InputFormat,
+	IF: Clone + InputFormat + Send + 'static,
 	R: Clone + IntoClientRequest + Unpin + Send + Sync,
 	IS: Clone + StreamExt + Unpin + Debug + Send + 'static,
-	IS::Item: Into <IF::Intermediate> + Send,
-	Self: Send
+	IS::Item: Into <IF::Intermediate> + Send
 {
 	#[task (shutdown = shutdown)]
 	async fn construct (&mut self)
@@ -53,8 +60,9 @@ where
 			. map
 		(
 			|websocket_stream|
-			websocket_sink::<IF, IS, _>
+			websocket_sink
 			(
+				self . input_format . clone (),
 				self . input . clone (),
 				websocket_stream
 			)

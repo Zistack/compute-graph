@@ -18,6 +18,7 @@ pub trait OutputFormat
 	fn convert_binary (bytes: Bytes) -> Option <Self::External>;
 }
 
+#[derive (Copy, Clone, Debug)]
 pub struct Text;
 
 impl InputFormat for Text
@@ -53,6 +54,7 @@ impl OutputFormat for Text
 	}
 }
 
+#[derive (Copy, Clone, Debug)]
 pub struct Binary;
 
 impl InputFormat for Binary

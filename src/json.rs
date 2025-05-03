@@ -62,7 +62,16 @@ pub async fn json_deserialize <IS, OS, OI>
 	}
 }
 
-struct JSON <T> (PhantomData <T>);
+#[derive (Copy, Clone, Debug)]
+pub struct JSON <T> (PhantomData <T>);
+
+impl <T> Default for JSON <T>
+{
+	fn default () -> Self
+	{
+		Self (PhantomData::default ())
+	}
+}
 
 impl <T> InputFormat for JSON <T>
 where T: Serialize + Debug
