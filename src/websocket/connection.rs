@@ -3,14 +3,12 @@ use std::fmt::Debug;
 use futures::StreamExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::Duration;
-use tokio::sync::mpsc;
 use tokio_tungstenite::WebSocketStream;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::PollSender;
 use tungstenite::Message;
 
 use crate::{expand_streams, service, join_services, send};
 use crate::exit_status::{ExitStatus, ServiceExitStatus, WithStatus};
+use crate::stream::mpsc;
 
 use super::io_format::{InputFormat, OutputFormat};
 use super::shuttle::*;
@@ -39,14 +37,14 @@ where
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
 	// Buffer size doesn't need to be big here.
-	let (ping_sender, ping_receiver) = mpsc::channel (1);
-	let (pong_sender, pong_receiver) = mpsc::channel (1);
+	let (ping_sink, ping_stream) = mpsc (1);
+	let (pong_sink, pong_stream) = mpsc (1);
 
 	let shuttle_input_handle = shuttle_input_with_pings
 	(
 		input_format,
 		inputs,
-		ReceiverStream::new (ping_receiver),
+		ping_stream,
 		websocket_sink
 	);
 
@@ -55,13 +53,13 @@ where
 		output_format,
 		websocket_stream,
 		outputs,
-		PollSender::new (pong_sender)
+		pong_sink,
 	);
 
 	let keepalive_handle = keepalive
 	(
-		PollSender::new (ping_sender),
-		ReceiverStream::new (pong_receiver),
+		ping_sink,
+		pong_stream,
 		ping_interval,
 		ping_timeout
 	);
@@ -151,20 +149,20 @@ where
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
-	let (pong_sender, pong_receiver) = mpsc::channel (1);
+	let (pong_sink, pong_stream) = mpsc (1);
 
 	let shuttle_output_handle = shuttle_output_with_pongs
 	(
 		output_format,
 		websocket_stream,
 		outputs,
-		PollSender::new (pong_sender)
+		pong_sink
 	);
 
 	let keepalive_handle = keepalive_direct_pings
 	(
 		websocket_sink,
-		ReceiverStream::new (pong_receiver),
+		pong_stream,
 		ping_interval,
 		ping_timeout
 	);
@@ -239,19 +237,19 @@ where
 {
 	let (websocket_sink, websocket_stream) = websocket . split ();
 
-	let (ping_sender, ping_receiver) = mpsc::channel (1);
+	let (ping_sink, ping_stream) = mpsc (1);
 
 	let shuttle_input_handle = shuttle_input_with_pings
 	(
 		input_format,
 		inputs,
-		ReceiverStream::new (ping_receiver),
+		ping_stream,
 		websocket_sink
 	);
 
 	let keepalive_handle = keepalive_direct_pongs
 	(
-		PollSender::new (ping_sender),
+		ping_sink,
 		websocket_stream,
 		ping_interval,
 		ping_timeout
