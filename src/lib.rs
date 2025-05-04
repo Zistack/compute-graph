@@ -11,3 +11,4 @@ pub mod robust_service;
 
 pub mod json;
 pub mod websocket;
+pub mod stream;
