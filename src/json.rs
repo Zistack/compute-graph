@@ -62,8 +62,18 @@ pub async fn json_deserialize <IS, OS, OI>
 	}
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive (Debug)]
 pub struct JSON <T> (PhantomData <T>);
+
+impl <T> Copy for JSON <T> {}
+
+impl <T> Clone for JSON <T>
+{
+	fn clone (&self) -> Self
+	{
+		Self::default ()
+	}
+}
 
 impl <T> Default for JSON <T>
 {
