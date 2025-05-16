@@ -95,7 +95,7 @@ fn service_inner (service_input: ServiceInput, mut function: ItemFn)
 			. generics
 			. make_where_clause ()
 			. predicates
-			. push (parse_quote! (#arg_type: Send + 'static));
+			. push (parse_quote! (#arg_type: std::marker::Send + 'static));
 	}
 
 	match service_input . shutdown
