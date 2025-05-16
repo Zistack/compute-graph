@@ -11,12 +11,7 @@ fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
 	{
 		{
 			let term_status: compute_graph::exit_status::ShouldTerminateClean =
-			<
-				_ as std::convert::Into
-				<
-					compute_graph::exit_status::ShouldTerminateClean
-				>
-			>::into (#handler);
+				std::convert::Into::into (#handler);
 
 			if term_status . should_terminate
 			{

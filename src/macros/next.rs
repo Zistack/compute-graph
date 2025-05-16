@@ -3,20 +3,20 @@ macro_rules! __next
 {
 	($stream: ident -> $item: ident => $handler: expr) =>
 	{
-		match <_ as futures::StreamExt>::next (&mut $stream) . await
+		match futures::StreamExt::next (&mut $stream) . await
 		{
 			std::option::Option::Some ($item) =>
-				<_ as std::convert::Into <$crate::exit_status::ShouldTerminateClean>>::into ($handler),
+				std::convert::Into::<$crate::exit_status::ShouldTerminateClean>::into ($handler),
 			std::option::Option::None =>
 				$crate::exit_status::ShouldTerminateClean::new ((), true)
 		}
 	};
 	($stream: ident -> $item: ident ? => $handler: expr) =>
 	{
-		match <_ as futures::StreamExt>::next (&mut $stream) . await
+		match futures::StreamExt::next (&mut $stream) . await
 		{
 			std::option::Option::Some ($item) =>
-				<_ as std::convert::Into <$crate::exit_status::ShouldTerminateWithStatus>>::into ($handler),
+				std::convert::Into::<$crate::exit_status::ShouldTerminateWithStatus>::into ($handler),
 			std::option::Option::None =>
 				$crate::exit_status::ShouldTerminateWithStatus::new
 				(

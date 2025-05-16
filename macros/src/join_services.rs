@@ -74,7 +74,7 @@ fn join_services_inner
 				#shutdown_branch
 				#(async
 				{
-					<_ as compute_graph::service_handle::ServiceHandle>::exit_status (&mut services . #service_idx)
+					compute_graph::service_handle::ServiceHandle::exit_status (&mut services . #service_idx)
 						. await
 						. expect ("expected service handle that could still produce an output")
 						. into_result ()
@@ -83,12 +83,12 @@ fn join_services_inner
 			{
 				std::result::Result::Ok (_) =>
 				(
-					#(<_ as compute_graph::service_handle::ServiceHandle>::take_output (&mut services . #service_idx)
+					#(compute_graph::service_handle::ServiceHandle::take_output (&mut services . #service_idx)
 						. expect ("expected completed service"),)*
 				),
 				std::result::Result::Err (()) =>
 				{
-					#(<_ as compute_graph::service_handle::ServiceHandle>::shutdown (&mut services . #service_idx);)*
+					#(compute_graph::service_handle::ServiceHandle::shutdown (&mut services . #service_idx);)*
 
 					tokio::join! (#(services . #service_idx),*)
 				}

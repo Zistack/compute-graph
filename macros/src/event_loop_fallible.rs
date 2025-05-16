@@ -10,14 +10,8 @@ fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
 	quote!
 	{
 		{
-			let term_status:
-				compute_graph::exit_status::ShouldTerminateWithStatus =
-			<
-				_ as std::convert::Into
-				<
-					compute_graph::exit_status::ShouldTerminateWithStatus
-				>
-			>::into (#handler);
+			let term_status: compute_graph::exit_status::ShouldTerminateWithStatus =
+				std::convert::Into::into (#handler);
 
 			if let std::option::Option::Some (exit_status) =
 				term_status . should_terminate_status

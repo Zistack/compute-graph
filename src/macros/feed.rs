@@ -3,7 +3,7 @@ macro_rules! __feed
 {
 	($sink: ident, $item: expr) =>
 	{
-		match <_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+		match futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			std::result::Result::Ok (()) =>
 				$crate::exit_status::ShouldTerminateClean::new ((), false),
@@ -21,7 +21,7 @@ macro_rules! __feed
 	};
 	($sink: ident ?, $item: expr) =>
 	{
-		match <_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+		match futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			std::result::Result::Ok (()) =>
 				$crate::exit_status::ShouldTerminateWithStatus::new ((), None),
@@ -50,7 +50,7 @@ macro_rules! __feed_or_break
 	($sink: ident, $item: expr) =>
 	{
 		if let std::result::Result::Err (sink_error) =
-			<_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+			futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			tracing::event!
 			(
@@ -59,13 +59,13 @@ macro_rules! __feed_or_break
 				"sink rejected item"
 			);
 
-			break <() as std::convert::Into <_>>::into (());
+			break std::convert::Into::into (());
 		}
 	};
 	($sink: ident ?, $item: expr) =>
 	{
 		if let std::result::Result::Err (sink_error) =
-			<_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+			futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			tracing::event!
 			(
@@ -74,7 +74,7 @@ macro_rules! __feed_or_break
 				"sink rejected item"
 			);
 
-			break <$crate::exit_status::ExitStatus as std::convert::Into <_>>::into
+			break std::convert::Into::into
 			(
 				$crate::exit_status::ExitStatus::Spurious
 			);
@@ -89,7 +89,7 @@ macro_rules! __feed_or_return
 	($sink: ident, $item: expr) =>
 	{
 		if let std::result::Result::Err (sink_error) =
-			<_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+			futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			tracing::event!
 			(
@@ -98,13 +98,13 @@ macro_rules! __feed_or_return
 				"sink rejected item"
 			);
 
-			return <() as std::convert::Into <_>>::into (());
+			return std::convert::Into::into (());
 		}
 	};
 	($sink: ident ?, $item: expr) =>
 	{
 		if let std::result::Result::Err (sink_error) =
-			<_ as futures::SinkExt <_>>::feed (&mut $sink, $item) . await
+			futures::SinkExt::feed (&mut $sink, $item) . await
 		{
 			tracing::event!
 			(
@@ -113,7 +113,7 @@ macro_rules! __feed_or_return
 				"sink rejected item"
 			);
 
-			return <$crate::exit_status::ExitStatus as std::convert::Into <_>>::into
+			return std::convert::Into::into
 			(
 				$crate::exit_status::ExitStatus::Spurious
 			);
