@@ -12,6 +12,7 @@ pub trait ServiceHandle: Future
 {
 	fn shutdown (&mut self);
 
+	#[allow (async_fn_in_trait)]
 	async fn exit_status (&mut self) -> Option <ExitStatus>;
 
 	fn take_output (&mut self) -> Option <Self::Output>;
