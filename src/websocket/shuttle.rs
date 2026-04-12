@@ -3,7 +3,7 @@ use tracing::{Level, event};
 use tungstenite::Message;
 use tungstenite::error::Result;
 
-use crate::{expand_streams, service, event_loop_fallible, feed};
+use crate::{expand_streams, service, event_loop_fallible, send};
 use crate::exit_status::{ExitStatus, WithStatus, ShouldTerminateWithStatus};
 
 use super::io_format::{InputFormat, OutputFormat};
@@ -26,12 +26,12 @@ where F: InputFormat
 	{
 		_ = &mut shutdown => ExitStatus::Clean,
 		ping_bytess -> ping_bytes =>
-			feed! (websocket, Message::Ping (ping_bytes)),
+			send! (websocket, Message::Ping (ping_bytes)),
 		inputs -> input =>
 		{
 			if let Some (message) = F::convert (input . into ())
 			{
-				feed! (websocket?, message)
+				send! (websocket?, message)
 			}
 			else
 			{
@@ -60,7 +60,7 @@ where F: InputFormat
 		{
 			if let Some (message) = F::convert (input . into ())
 			{
-				feed! (websocket?, message)
+				send! (websocket?, message)
 			}
 			else
 			{
@@ -103,7 +103,7 @@ where F: OutputFormat
 			{
 				if let Some (output) = F::convert_text (utf8_bytes)
 				{
-					feed! (outputs, output) . into ()
+					send! (outputs, output) . into ()
 				}
 				else
 				{
@@ -114,7 +114,7 @@ where F: OutputFormat
 			{
 				if let Some (output) = F::convert_binary (bytes)
 				{
-					feed! (outputs, output) . into ()
+					send! (outputs, output) . into ()
 				}
 				else
 				{
@@ -122,7 +122,7 @@ where F: OutputFormat
 				}
 			},
 			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
-			Ok (Message::Pong (bytes)) => feed! (pong_bytess, bytes) . into (),
+			Ok (Message::Pong (bytes)) => send! (pong_bytess, bytes) . into (),
 			Ok (Message::Close (close_frame)) =>
 			{
 				event!
@@ -174,7 +174,7 @@ where F: OutputFormat
 			{
 				if let Some (output) = F::convert_text (utf8_bytes)
 				{
-					feed! (outputs, output) . into ()
+					send! (outputs, output) . into ()
 				}
 				else
 				{
@@ -185,7 +185,7 @@ where F: OutputFormat
 			{
 				if let Some (output) = F::convert_binary (bytes)
 				{
-					feed! (outputs, output) . into ()
+					send! (outputs, output) . into ()
 				}
 				else
 				{

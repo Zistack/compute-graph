@@ -10,7 +10,7 @@ use crate::{
 	service,
 	select_fallible,
 	event_loop_fallible,
-	feed_or_return
+	send_or_return
 };
 use crate::exit_status::{ExitStatus, WithStatus, ShouldTerminateWithStatus};
 
@@ -27,7 +27,7 @@ pub async fn ping <PIS, POS>
 )
 -> ShouldTerminateWithStatus
 {
-	feed_or_return! (pings, ping_bytes . clone ());
+	send_or_return! (pings, ping_bytes . clone ());
 
 	select_fallible!
 	{
@@ -108,7 +108,7 @@ pub async fn ping_direct_pongs <PIS, WS>
 )
 -> ShouldTerminateWithStatus
 {
-	feed_or_return! (pings, ping_bytes . clone ());
+	send_or_return! (pings, ping_bytes . clone ());
 
 	select_fallible!
 	{
@@ -242,7 +242,7 @@ pub async fn ping_direct_pings <WS, POS>
 )
 -> ShouldTerminateWithStatus
 {
-	feed_or_return! (websocket?, Message::Ping (ping_bytes . clone ()));
+	send_or_return! (websocket?, Message::Ping (ping_bytes . clone ()));
 
 	select_fallible!
 	{
