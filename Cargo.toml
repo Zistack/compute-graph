@@ -16,7 +16,7 @@ tokio-tungstenite = {version = "0.26", features = ["connect", "rustls-tls-webpki
 bytes = {version = "1.10"}
 
 tokio = {version = "1", features = ["rt", "macros", "sync", "time"]}
-tokio-stream = {version = "0.1"}
+tokio-stream = {version = "0.1", features = ["sync"]}
 tokio-util = {version = "0.7"}
 futures = {version = "0.3"}
 tracing = {version = "0.1"}

@@ -16,3 +16,15 @@ where T: Debug + Send + 'static
 		tokio_stream::wrappers::ReceiverStream::new (receiver)
 	)
 }
+
+pub fn watch <T> (initial_value: T)
+-> (
+	tokio::sync::watch::Sender <T>,
+	impl Stream <Item = T> + Unpin + Debug + Send + 'static
+)
+where T: Clone + Send + Sync + 'static
+{
+	let (sender, receiver) = tokio::sync::watch::channel (initial_value);
+
+	(sender, tokio_stream::wrappers::WatchStream::new (receiver))
+}
