@@ -83,7 +83,7 @@ fn implement_stream_iter_pattern (stream_iter_pattern: StreamIterEventPattern)
 	}};
 
 	let finish_handler = finish_handler
-		. map (|FinishHandler {handler, ..}| quote! (let _: () = #handler));
+		. map (|FinishHandler {handler, ..}| quote! (let _: () = #handler;));
 
 	let tokens = quote!
 	{
