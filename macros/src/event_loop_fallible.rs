@@ -1,23 +1,20 @@
-use syn::{Ident, Expr, Token};
+use syn::Token;
 use syn::punctuated::Punctuated;
 use syn::parse::{Parser, Result, Error};
 use quote::quote;
 
 use crate::event_pattern::*;
 
-fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
+fn implement_shutdown_pattern (shutdown_pattern: ShutdownEventPattern)
+-> proc_macro2::TokenStream
 {
+	let ShutdownEventPattern {shutdown, ..} = shutdown_pattern;
+
 	quote!
 	{
+		_ = #shutdown =>
 		{
-			let term_status: compute_graph::exit_status::ShouldTerminateWithStatus =
-				std::convert::Into::into (#handler);
-
-			if let std::option::Option::Some (exit_status) =
-				term_status . should_terminate_status
-			{
-				break compute_graph::exit_status::WithStatus::new ((), exit_status)
-			}
+			break compute_graph::exit_status::ExitStatus::Clean;
 		}
 	}
 }
@@ -25,33 +22,105 @@ fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
 fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 -> proc_macro2::TokenStream
 {
-	let StreamEventPattern {stream, item, question_token, handler, ..} =
-		stream_pattern;
+	let StreamEventPattern {stream, question_token, item, handler, ..}
+		= stream_pattern;
 
-	let implemented_handler = implement_handler (handler);
-
-	let stream_close_status = if question_token . is_some ()
+	let map_tokens = match question_token
 	{
-		quote! (compute_graph::exit_status::ExitStatus::Spurious)
-	}
-	else
-	{
-		quote! (compute_graph::exit_status::ExitStatus::Clean)
+		None => Some
+		(
+			quote!
+			(
+				. map_break (|_| compute_graph::exit_status::ExitStatus::Clean)
+			)
+		),
+		Some (_) => None
 	};
-
-	let intermediate = Ident::new ("__item", proc_macro2::Span::mixed_site ());
 
 	quote!
 	{
-		#intermediate = #stream . next () => match #intermediate
+		__item = #stream . next () => compute_graph::check_break!
+		(
+			compute_graph::handle_stream_output!
+			(
+				Some (#item) = #question_token __item =>
+				{
+					let _: () = #handler;
+					core::ops::ControlFlow::<compute_graph::exit_status::ExitStatus>::Continue (())
+				}
+			) #map_tokens
+		)
+	}
+}
+
+fn implement_stream_iter_pattern (stream_iter_pattern: StreamIterEventPattern)
+-> proc_macro2::TokenStream
+{
+	let StreamIterEventPattern
+	{
+		stream,
+		question_token,
+		item,
+		item_handler,
+		finish_handler,
+		..
+	}
+		= stream_iter_pattern;
+
+	let map_tokens = match question_token
+	{
+		None => Some
+		(
+			quote!
+			(
+				. map_break (|_| compute_graph::exit_status::ExitStatus::Clean)
+			)
+		),
+		Some (_) => None
+	};
+
+	let item_handler = quote!
+	{{
+		let _: () = #item_handler;
+		core::ops::ControlFlow::<compute_graph::exit_status::ExitStatus>::Continue (())
+	}};
+
+	let finish_handler = finish_handler
+		. map (|FinishHandler {handler, ..}| quote! (let _: () = #handler;));
+
+	quote!
+	{
+		__item = #stream . next () =>
 		{
-			std::option::Option::Some (#item) => #implemented_handler,
-			std::option::Option::None =>
-				break compute_graph::exit_status::WithStatus::new
+			compute_graph::check_break!
+			(
+				compute_graph::handle_stream_output!
 				(
-					(),
-					#stream_close_status
-				)
+					Some (#item) = #question_token __item => #item_handler
+				) #map_tokens
+			);
+
+			for __item
+			in compute_graph::stream::ready_items (std::pin::Pin::new (&mut #stream))
+			{
+				compute_graph::check_break!
+				(
+					compute_graph::capture_break!
+					(
+						compute_graph::check_break!
+						(
+							compute_graph::handle_stream_output!
+							(
+								Some (#item) = #question_token __item =>
+									#item_handler
+							) #map_tokens
+						)
+					),
+					'__event_loop_fallible
+				);
+			}
+
+			#finish_handler
 		}
 	}
 }
@@ -61,12 +130,7 @@ fn implement_future_pattern (future_pattern: FutureEventPattern)
 {
 	let FutureEventPattern {value, future, handler, ..} = future_pattern;
 
-	let implemented_handler = implement_handler (handler);
-
-	quote!
-	{
-		#value = #future => #implemented_handler
-	}
+	quote! (#value = #future => { let _: () = #handler; })
 }
 
 fn implement_event_pattern (event_pattern: EventPattern)
@@ -74,17 +138,18 @@ fn implement_event_pattern (event_pattern: EventPattern)
 {
 	match event_pattern
 	{
+		EventPattern::Shutdown (shutdown_pattern) =>
+			implement_shutdown_pattern (shutdown_pattern),
 		EventPattern::Stream (stream_pattern) =>
 			implement_stream_pattern (stream_pattern),
+		EventPattern::StreamIter (stream_iter_pattern) =>
+			implement_stream_iter_pattern (stream_iter_pattern),
 		EventPattern::Future (future_pattern) =>
 			implement_future_pattern (future_pattern)
 	}
 }
 
-fn event_loop_fallible_inner
-(
-	event_patterns: Punctuated <EventPattern, Token! [,]>
-)
+fn event_loop_fallible_inner (event_patterns: Punctuated <EventPattern, Token! [,]>)
 -> proc_macro2::TokenStream
 {
 	let implemented_event_patterns = event_patterns
@@ -92,16 +157,19 @@ fn event_loop_fallible_inner
 		. map (|event_pattern| implement_event_pattern (event_pattern));
 
 	quote!
-	{
-		loop
+	{{
+		let e: compute_graph::exit_status::ExitStatus =
+			'__event_loop_fallible: loop
 		{
-			tokio::select!
+			let _: () = tokio::select!
 			(
 				biased;
 				#(#implemented_event_patterns),*
 			);
-		}
-	}
+		};
+
+		e
+	}}
 }
 
 fn try_event_loop_fallible_impl (input: proc_macro::TokenStream)

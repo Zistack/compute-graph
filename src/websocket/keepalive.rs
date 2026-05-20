@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bytes::Bytes;
 use tokio::time::{Duration, MissedTickBehavior, interval, sleep};
 use tokio::sync::oneshot::Receiver;
@@ -10,9 +12,10 @@ use crate::{
 	service,
 	select_fallible,
 	event_loop_fallible,
-	send_or_return
+	check_break,
+	send,
 };
-use crate::exit_status::{ExitStatus, WithStatus, ShouldTerminateWithStatus};
+use crate::exit_status::{ExitStatus, WithStatus};
 
 use crate as compute_graph;
 
@@ -25,13 +28,13 @@ pub async fn ping <PIS, POS>
 	ping_bytes: Bytes,
 	ping_timeout: Duration
 )
--> ShouldTerminateWithStatus
+-> ControlFlow <ExitStatus>
 {
-	send_or_return! (pings, ping_bytes . clone ());
+	send! (pings, ping_bytes . clone ()) . map_break (|_| ExitStatus::Clean)?;
 
 	select_fallible!
 	{
-		_ = shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?shutdown,
 		pongs -> pong_bytes => if pong_bytes != ping_bytes
 		{
 			event!
@@ -42,12 +45,9 @@ pub async fn ping <PIS, POS>
 				"pong frame bytes did not match ping frame bytes"
 			);
 
-			ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			ControlFlow::Break (ExitStatus::Spurious)
 		}
-		else
-		{
-			ShouldTerminateWithStatus::from (None)
-		},
+		else { ControlFlow::Continue (()) },
 		_ = sleep (ping_timeout) =>
 		{
 			event!
@@ -56,7 +56,7 @@ pub async fn ping <PIS, POS>
 				"websocket connection timed out"
 			);
 
-			ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			ControlFlow::Break (ExitStatus::Spurious)
 		}
 	}
 }
@@ -70,7 +70,7 @@ pub async fn keepalive <PIS, POS>
 	ping_interval: Duration,
 	ping_timeout: Duration
 )
--> WithStatus
+-> ExitStatus
 {
 	let mut ping_clock = interval (ping_interval);
 	ping_clock . set_missed_tick_behavior (MissedTickBehavior::Delay);
@@ -79,20 +79,23 @@ pub async fn keepalive <PIS, POS>
 
 	event_loop_fallible!
 	{
-		_ = &mut shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?&mut shutdown,
 		_ = ping_clock . tick () =>
 		{
 			let ping_bytes = Bytes::from_owner (ping_counter . to_be_bytes ());
 			ping_counter += 1;
 
-			ping
+			check_break!
 			(
-				&mut shutdown,
-				&mut pings,
-				&mut pongs,
-				ping_bytes,
-				ping_timeout
-			) . await
+				ping
+				(
+					&mut shutdown,
+					&mut pings,
+					&mut pongs,
+					ping_bytes,
+					ping_timeout
+				) . await
+			);
 		}
 	}
 }
@@ -106,13 +109,13 @@ pub async fn ping_direct_pongs <PIS, WS>
 	ping_bytes: Bytes,
 	ping_timeout: Duration
 )
--> ShouldTerminateWithStatus
+-> ControlFlow <ExitStatus>
 {
-	send_or_return! (pings, ping_bytes . clone ());
+	send! (pings, ping_bytes . clone ()) . map_break (|_| ExitStatus::Clean)?;
 
 	select_fallible!
 	{
-		_ = shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?shutdown,
 		websocket -> message => match message
 		{
 			Err (ws_error) =>
@@ -124,7 +127,7 @@ pub async fn ping_direct_pongs <PIS, WS>
 					"websocket connection encountered an error"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				ControlFlow::Break (ExitStatus::Spurious)
 			}
 			Ok (Message::Text (utf8_bytes)) =>
 			{
@@ -135,8 +138,8 @@ pub async fn ping_direct_pongs <PIS, WS>
 					"received superfluous text message"
 				);
 
-				ShouldTerminateWithStatus::from (None)
-			},
+				ControlFlow::Continue (())
+			}
 			Ok (Message::Binary (bytes)) =>
 			{
 				event!
@@ -146,9 +149,9 @@ pub async fn ping_direct_pongs <PIS, WS>
 					"received superfluous binary message"
 				);
 
-				ShouldTerminateWithStatus::from (None)
-			},
-			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
+				ControlFlow::Continue (())
+			}
+			Ok (Message::Ping (_)) => ControlFlow::Continue (()),
 			Ok (Message::Pong (pong_bytes)) => if pong_bytes != ping_bytes
 			{
 				event!
@@ -159,12 +162,9 @@ pub async fn ping_direct_pongs <PIS, WS>
 					"pong frame bytes did not match ping frame bytes"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				ControlFlow::Break (ExitStatus::Spurious)
 			}
-			else
-			{
-				ShouldTerminateWithStatus::from (None)
-			},
+			else { ControlFlow::Continue (()) },
 			Ok (Message::Close (close_frame)) =>
 			{
 				event!
@@ -174,7 +174,7 @@ pub async fn ping_direct_pongs <PIS, WS>
 					"websocket connection was closed before shutdown"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				ControlFlow::Break (ExitStatus::Spurious)
 			},
 			Ok (Message::Frame (_)) => unreachable!
 			(
@@ -189,7 +189,7 @@ pub async fn ping_direct_pongs <PIS, WS>
 				"websocket connection timed out"
 			);
 
-			ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			ControlFlow::Break (ExitStatus::Spurious)
 		}
 	}
 }
@@ -210,25 +210,29 @@ pub async fn keepalive_direct_pongs <PIS, WS>
 
 	let mut ping_counter: u32 = 0;
 
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?&mut shutdown,
 		_ = ping_clock . tick () =>
 		{
 			let ping_bytes = Bytes::from_owner (ping_counter . to_be_bytes ());
 			ping_counter += 1;
 
-			ping_direct_pongs
+			check_break!
 			(
-				&mut shutdown,
-				&mut pings,
-				&mut websocket,
-				ping_bytes,
-				ping_timeout
-			) . await
+				ping_direct_pongs
+				(
+					&mut shutdown,
+					&mut pings,
+					&mut websocket,
+					ping_bytes,
+					ping_timeout
+				) . await
+			);
 		}
-	}
-		. with_value (websocket)
+	};
+
+	WithStatus::new (websocket, status)
 }
 
 #[expand_streams]
@@ -240,13 +244,13 @@ pub async fn ping_direct_pings <WS, POS>
 	ping_bytes: Bytes,
 	ping_timeout: Duration
 )
--> ShouldTerminateWithStatus
+-> ControlFlow <ExitStatus>
 {
-	send_or_return! (websocket?, Message::Ping (ping_bytes . clone ()));
+	send! (websocket?, Message::Ping (ping_bytes . clone ()))?;
 
 	select_fallible!
 	{
-		_ = shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?shutdown,
 		pongs -> pong_bytes => if pong_bytes != ping_bytes
 		{
 			event!
@@ -257,12 +261,9 @@ pub async fn ping_direct_pings <WS, POS>
 				"pong frame bytes did not match ping frame bytes"
 			);
 
-			ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			ControlFlow::Break (ExitStatus::Spurious)
 		}
-		else
-		{
-			ShouldTerminateWithStatus::from (None)
-		},
+		else { ControlFlow::Continue (()) },
 		_ = sleep (ping_timeout) =>
 		{
 			event!
@@ -271,7 +272,7 @@ pub async fn ping_direct_pings <WS, POS>
 				"websocket connection timed out"
 			);
 
-			ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+			ControlFlow::Break (ExitStatus::Spurious)
 		}
 	}
 }
@@ -292,23 +293,27 @@ pub async fn keepalive_direct_pings <WS, POS>
 
 	let mut ping_counter: u32 = 0;
 
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ShouldTerminateWithStatus::from (ExitStatus::Clean),
+		?&mut shutdown,
 		_ = ping_clock . tick () =>
 		{
 			let ping_bytes = Bytes::from_owner (ping_counter . to_be_bytes ());
 			ping_counter += 1;
 
-			ping_direct_pings
+			check_break!
 			(
-				&mut shutdown,
-				&mut websocket,
-				&mut pongs,
-				ping_bytes,
-				ping_timeout
-			) . await
+				ping_direct_pings
+				(
+					&mut shutdown,
+					&mut websocket,
+					&mut pongs,
+					ping_bytes,
+					ping_timeout
+				) . await
+			);
 		}
-	}
-		. with_value (websocket)
+	};
+
+	WithStatus::new (websocket, status)
 }

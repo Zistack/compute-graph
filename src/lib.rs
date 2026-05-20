@@ -13,3 +13,6 @@ pub mod json;
 pub mod websocket;
 pub mod stream;
 pub mod stream_collection;
+
+#[doc (hidden)]
+pub mod convert;

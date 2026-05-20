@@ -1,14 +1,26 @@
+mod capture_break;
+pub use capture_break::*;
+
+mod handle_stream_output;
+pub use handle_stream_output::*;
+
+mod handle_sink_result;
+pub use handle_sink_result::*;
+
+mod check_break;
+pub use check_break::*;
+
 mod feed;
-pub use feed::{feed, feed_or_break, feed_or_return};
+pub use feed::*;
 
 mod flush;
-pub use flush::{flush, flush_or_break, flush_or_return};
+pub use flush::*;
 
 mod send;
-pub use send::{send, send_or_break, send_or_return};
+pub use send::*;
 
 mod send_all;
-pub use send_all::{send_all, send_all_or_break, send_all_or_return};
+pub use send_all::*;
 
 mod next;
-pub use next::{next, next_or_break, next_or_return};
+pub use next::*;

@@ -5,7 +5,7 @@ use futures::SinkExt;
 use tungstenite::client::IntoClientRequest;
 
 use crate::task;
-use crate::exit_status::WithStatus;
+use crate::exit_status::ExitStatus;
 use crate::robust_service::SignallableFallibleServiceFactory;
 use crate::service_handle::SignallableServiceHandle;
 use crate::websocket::connection::websocket_source;
@@ -54,7 +54,7 @@ where
 {
 	#[task (shutdown = shutdown)]
 	async fn construct (&mut self)
-	-> Option <SignallableServiceHandle <WithStatus>>
+	-> Option <SignallableServiceHandle <ExitStatus>>
 	{
 		connect_with_retry (&self . connection_config, &mut shutdown)
 			. await

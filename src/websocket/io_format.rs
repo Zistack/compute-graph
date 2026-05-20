@@ -31,7 +31,6 @@ impl InputFormat for Text
 	}
 }
 
-// Maybe make this use exit status instead?  Alternately, Option?
 impl OutputFormat for Text
 {
 	type External = Utf8Bytes;

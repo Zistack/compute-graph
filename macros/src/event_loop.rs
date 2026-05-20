@@ -1,55 +1,122 @@
-use syn::{Ident, Expr, Token};
+use syn::Token;
 use syn::punctuated::Punctuated;
 use syn::parse::{Parser, Result, Error};
 use quote::quote;
 
 use crate::event_pattern::*;
 
-fn implement_handler (handler: Expr) -> proc_macro2::TokenStream
+fn implement_shutdown_pattern (shutdown_pattern: ShutdownEventPattern)
+-> proc_macro2::TokenStream
 {
+	let ShutdownEventPattern {shutdown, ..} = shutdown_pattern;
+
 	quote!
 	{
-		{
-			let term_status: compute_graph::exit_status::ShouldTerminateClean =
-				std::convert::Into::into (#handler);
-
-			if term_status . should_terminate
-			{
-				break compute_graph::exit_status::AlwaysClean::new (());
-			}
-		}
+		_ = #shutdown => { break; }
 	}
 }
 
 fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 -> Result <proc_macro2::TokenStream>
 {
-	let StreamEventPattern {stream, item, question_token, handler, ..} =
-		stream_pattern;
-
-	let implemented_handler = implement_handler (handler);
+	let StreamEventPattern {stream, question_token, item, handler, ..}
+		= stream_pattern;
 
 	if question_token . is_some ()
 	{
-		return Err
-		(
+		return Err (
 			Error::new_spanned
 			(
 				question_token,
-				"fallible streams are not supported by this macro; use event_loop_fallible instead"
+				"Fallible streams are not supported by `event_loop!`.  Use `event_loop_fallible!` instead."
 			)
 		);
 	}
 
-	let intermediate = Ident::new ("__item", proc_macro2::Span::mixed_site ());
+	let tokens = quote!
+	{
+		__item = #stream . next () => compute_graph::check_break!
+		(
+			compute_graph::handle_stream_output!
+			(
+				Some (#item) = __item =>
+				{
+					let _: () = #handler;
+					core::ops::ControlFlow::<()>::Continue (())
+				}
+			)
+		)
+	};
+
+	Ok (tokens)
+}
+
+fn implement_stream_iter_pattern (stream_iter_pattern: StreamIterEventPattern)
+-> Result <proc_macro2::TokenStream>
+{
+	let StreamIterEventPattern
+	{
+		stream,
+		question_token,
+		item,
+		item_handler,
+		finish_handler,
+		..
+	}
+		= stream_iter_pattern;
+
+	if question_token . is_some ()
+	{
+		return Err (
+			Error::new_spanned
+			(
+				question_token,
+				"Fallible streams are not supported by `event_loop!`.  Use `event_loop_fallible!` instead."
+			)
+		);
+	}
+
+	let item_handler = quote!
+	{{
+		let _: () = #item_handler;
+		core::ops::ControlFlow::<()>::Continue (())
+	}};
+
+	let finish_handler = finish_handler
+		. map (|FinishHandler {handler, ..}| quote! (let _: () = #handler));
 
 	let tokens = quote!
 	{
-		#intermediate = #stream . next () => match #intermediate
+		__item = #stream . next () =>
 		{
-			std::option::Option::Some (#item) => #implemented_handler,
-			std::option::Option::None =>
-				break compute_graph::exit_status::AlwaysClean::new (())
+			compute_graph::check_break!
+			(
+				compute_graph::handle_stream_output!
+				(
+					Some (#item) = __item => #item_handler
+				)
+			);
+
+			for __item
+			in compute_graph::stream::ready_items (std::pin::Pin::new (&mut #stream))
+			{
+				compute_graph::check_break!
+				(
+					compute_graph::capture_break!
+					(
+						compute_graph::check_break!
+						(
+							compute_graph::handle_stream_output!
+							(
+								Some (#item) = __item => #item_handler
+							)
+						)
+					),
+					'__event_loop
+				);
+			}
+
+			#finish_handler
 		}
 	};
 
@@ -61,50 +128,46 @@ fn implement_future_pattern (future_pattern: FutureEventPattern)
 {
 	let FutureEventPattern {value, future, handler, ..} = future_pattern;
 
-	let implemented_handler = implement_handler (handler);
-
-	quote!
-	{
-		#value = #future => #implemented_handler
-	}
+	quote! (#value = #future => { let _: () = #handler; })
 }
 
 fn implement_event_pattern (event_pattern: EventPattern)
 -> Result <proc_macro2::TokenStream>
 {
-	match event_pattern
+	let tokens = match event_pattern
 	{
+		EventPattern::Shutdown (shutdown_pattern) =>
+			implement_shutdown_pattern (shutdown_pattern),
 		EventPattern::Stream (stream_pattern) =>
-			implement_stream_pattern (stream_pattern),
+			implement_stream_pattern (stream_pattern)?,
+		EventPattern::StreamIter (stream_iter_pattern) =>
+			implement_stream_iter_pattern (stream_iter_pattern)?,
 		EventPattern::Future (future_pattern) =>
-			Ok (implement_future_pattern (future_pattern))
-	}
+			implement_future_pattern (future_pattern)
+	};
+
+	Ok (tokens)
 }
 
-// Specializing for a single handler would be cool.
 fn event_loop_inner (event_patterns: Punctuated <EventPattern, Token! [,]>)
 -> Result <proc_macro2::TokenStream>
 {
-	let mut implemented_event_patterns =
-		Vec::with_capacity (event_patterns . len ());
-
-	for event_pattern in event_patterns
-	{
-		implemented_event_patterns
-			. push (implement_event_pattern (event_pattern)?);
-	}
+	let implemented_event_patterns = event_patterns
+		. into_iter ()
+		. map (|event_pattern| implement_event_pattern (event_pattern))
+		. collect::<Result <Vec <proc_macro2::TokenStream>>> ()?;
 
 	let tokens = quote!
-	{
-		loop
+	{{
+		let _: () = '__event_loop: loop
 		{
-			tokio::select!
+			let _: () = tokio::select!
 			(
 				biased;
 				#(#implemented_event_patterns),*
 			);
-		}
-	};
+		};
+	}};
 
 	Ok (tokens)
 }
@@ -114,7 +177,7 @@ fn try_event_loop_impl (input: proc_macro::TokenStream)
 {
 	let event_patterns = Punctuated::parse_terminated . parse (input)?;
 
-	event_loop_inner (event_patterns)
+	Ok (event_loop_inner (event_patterns)?)
 }
 
 pub fn event_loop_impl (input: proc_macro::TokenStream)

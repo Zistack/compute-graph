@@ -1,37 +1,108 @@
 use syn::Token;
 use syn::punctuated::Punctuated;
 use syn::parse::{Parser, Result, Error};
-use quote::quote;
+use quote::{ToTokens, quote};
 
 use crate::event_pattern::*;
+
+fn implement_shutdown_pattern (shutdown_pattern: ShutdownEventPattern)
+-> proc_macro2::TokenStream
+{
+	let ShutdownEventPattern {shutdown, ..} = shutdown_pattern;
+
+	quote!
+	{
+		_ = #shutdown => core::ops::ControlFlow::Break
+		(
+			compute_graph::exit_status::ExitStatus::Clean
+		)
+	}
+}
 
 fn implement_stream_pattern (stream_pattern: StreamEventPattern)
 -> proc_macro2::TokenStream
 {
-	let StreamEventPattern {stream, item, question_token, handler, ..}
+	let StreamEventPattern {stream, question_token, item, handler, ..}
 		= stream_pattern;
 
-	let stream_close_status = if question_token . is_some ()
+	let map_tokens = match &question_token
 	{
-		quote! (compute_graph::exit_status::ExitStatus::Spurious)
-	}
-	else
-	{
-		quote! (compute_graph::exit_status::ExitStatus::Clean)
+		None => Some
+		(
+			quote!
+			(
+				. map_break (|_| compute_graph::exit_status::ExitStatus::Clean)
+			)
+		),
+		Some (_) => None
 	};
 
 	quote!
 	{
-		#item = #stream . next () => match #item
-		{
-			std::option::Option::Some (#item) =>
-				std::convert::Into::<compute_graph::exit_status::ShouldTerminateWithStatus>::into (#handler),
-			std::option::Option::None =>
-				compute_graph::exit_status::ShouldTerminateWithStatus::new
+		__item = #stream . next () => compute_graph::handle_stream_output!
+		(
+			Some (#item) = #question_token __item => #handler
+		) #map_tokens
+	}
+}
+
+fn implement_stream_iter_pattern (stream_iter_pattern: StreamIterEventPattern)
+-> proc_macro2::TokenStream
+{
+	let StreamIterEventPattern
+	{
+		stream,
+		question_token,
+		item,
+		item_handler,
+		finish_handler,
+		..
+	}
+		= stream_iter_pattern;
+
+	let map_tokens = match &question_token
+	{
+		None => Some
+		(
+			quote!
+			(
+				. map_break (|_| compute_graph::exit_status::ExitStatus::Clean)
+			)
+		),
+		Some (_) => None
+	};
+
+	let finish_handler = match finish_handler
+	{
+		None => quote! (core::ops::ControlFlow::Continue (())),
+		Some (FinishHandler {handler, ..}) => handler . into_token_stream ()
+	};
+
+	quote!
+	{
+		__item = #stream . next () =>
+		'__select_fallible_handler: {
+			if let core::ops::ControlFlow::Break (b) compute_graph::handle_stream_output!
+			(
+				Some (#item) = #question_token __item => #item_handler
+			) #map_tokens
+			{
+				break '__select_fallible_handler core::ops::ControlFlow::Break (b);
+			}
+
+			for __item
+			in compute_graph::stream::ready_items (std::pin::Pin::new (&mut #stream))
+			{
+				if let core::ops::ControlFlow::Break (b) = compute_graph::handle_stream_output!
 				(
-					(),
-					std::option::Option::Some (#stream_close_status)
-				)
+					Some (#item) = #question_token __item => #item_handler
+				) #map_tokens
+				{
+					break __select_fallible_handler core::ops::ControlFlow::Break (b);
+				}
+			}
+
+			#finish_handler
 		}
 	}
 }
@@ -41,11 +112,7 @@ fn implement_future_pattern (future_pattern: FutureEventPattern)
 {
 	let FutureEventPattern {value, future, handler, ..} = future_pattern;
 
-	quote!
-	{
-		#value = #future =>
-			std::convert::Into::<compute_graph::exit_status::ShouldTerminateWithStatus>::into (#handler)
-	}
+	quote! (#value = #future => #handler)
 }
 
 fn implement_event_pattern (event_pattern: EventPattern)
@@ -53,8 +120,12 @@ fn implement_event_pattern (event_pattern: EventPattern)
 {
 	match event_pattern
 	{
+		EventPattern::Shutdown (shutdown_pattern) =>
+			implement_shutdown_pattern (shutdown_pattern),
 		EventPattern::Stream (stream_pattern) =>
 			implement_stream_pattern (stream_pattern),
+		EventPattern::StreamIter (stream_iter_pattern) =>
+			implement_stream_iter_pattern (stream_iter_pattern),
 		EventPattern::Future (future_pattern) =>
 			implement_future_pattern (future_pattern)
 	}
@@ -68,17 +139,16 @@ fn select_fallible_inner (event_patterns: Punctuated <EventPattern, Token! [,]>)
 		. map (|event_pattern| implement_event_pattern (event_pattern));
 
 	quote!
-	{
-		{
-			let term_status: compute_graph::exit_status::ShouldTerminateWithStatus =
-				tokio::select!
-				(
-					#(#implemented_event_patterns),*
-				);
+	{{
+		let c: core::ops::ControlFlow <compute_graph::exit_status::ExitStatus> =
+			tokio::select!
+		(
+			biased;
+			#(#implemented_event_patterns),*
+		);
 
-			term_status
-		}
-	}
+		c
+	}}
 }
 
 fn try_select_fallible_impl (input: proc_macro::TokenStream)

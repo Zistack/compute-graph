@@ -1,4 +1,4 @@
-use super::{ExitStatus, ServiceExitStatus, AlwaysClean};
+use super::{ExitStatus, ServiceExitStatus};
 
 pub struct WithStatus <T = ()>
 {
@@ -13,22 +13,6 @@ impl <T> WithStatus <T>
 		Self {value, status}
 	}
 
-	pub fn split (self) -> (T, WithStatus <()>)
-	{
-		(self . value, WithStatus::from (self . status))
-	}
-
-	pub fn with_value <U> (self, value: U) -> WithStatus <U>
-	{
-		WithStatus::new (value, self . status)
-	}
-
-	pub fn map_value <F, R> (self, f: F) -> WithStatus <R>
-	where F: FnOnce (T) -> R
-	{
-		WithStatus::new (f (self . value), self . status)
-	}
-
 	pub fn into_value (self) -> T
 	{
 		self . value
@@ -41,30 +25,6 @@ where T: Default
 	fn default () -> Self
 	{
 		Self {value: T::default (), status: ExitStatus::Clean}
-	}
-}
-
-impl From <()> for WithStatus
-{
-	fn from (unit: ()) -> Self
-	{
-		Self {value: unit, status: ExitStatus::Clean}
-	}
-}
-
-impl From <ExitStatus> for WithStatus
-{
-	fn from (status: ExitStatus) -> Self
-	{
-		Self {value: (), status}
-	}
-}
-
-impl <T> From <AlwaysClean <T>> for WithStatus <T>
-{
-	fn from (always_clean: AlwaysClean <T>) -> Self
-	{
-		Self {value: always_clean . value, status: ExitStatus::Clean}
 	}
 }
 

@@ -12,22 +12,6 @@ impl <T> AlwaysClean <T>
 		Self {value}
 	}
 
-	pub fn split (self) -> (T, AlwaysClean <()>)
-	{
-		(self . value, AlwaysClean::default ())
-	}
-
-	pub fn with_value <U> (self, value: U) -> AlwaysClean <U>
-	{
-		AlwaysClean::new (value)
-	}
-
-	pub fn map_value <F, R> (self, f: F) -> AlwaysClean <R>
-	where F: FnOnce (T) -> R
-	{
-		AlwaysClean::new (f (self . value))
-	}
-
 	pub fn into_value (self) -> T
 	{
 		self . value
@@ -40,14 +24,6 @@ where T: Default
 	fn default () -> Self
 	{
 		Self {value: T::default ()}
-	}
-}
-
-impl From <()> for AlwaysClean
-{
-	fn from (unit: ()) -> Self
-	{
-		Self {value: unit}
 	}
 }
 

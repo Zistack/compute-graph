@@ -7,7 +7,7 @@ use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
 
 use crate::{expand_streams, service, join_services, send};
-use crate::exit_status::{ExitStatus, ServiceExitStatus, WithStatus};
+use crate::exit_status::{ExitStatus, ServiceExitStatus};
 use crate::stream::mpsc;
 
 use super::io_format::{InputFormat, OutputFormat};
@@ -28,7 +28,7 @@ pub async fn websocket_node_with_pings <IF, OF, IS, OS, S>
 	ping_interval: Duration,
 	ping_timeout: Duration
 )
--> WithStatus
+-> ExitStatus
 where
 	IF: InputFormat + Send,
 	OF: OutputFormat + Send,
@@ -76,15 +76,15 @@ where
 		|| output_report . status_spurious ()
 		|| keepalive_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		let (mut websocket_sink, _) = input_report . split ();
+		let mut websocket_sink = input_report . into_value ();
 
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }
 
@@ -98,7 +98,7 @@ pub async fn websocket_node <IF, OF, IS, OS, S>
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>
 )
--> WithStatus
+-> ExitStatus
 where
 	IF: InputFormat + Send,
 	OF: OutputFormat + Send,
@@ -120,15 +120,15 @@ where
 
 	if input_report . status_spurious () || output_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		let (mut websocket_sink, _) = input_report . split ();
+		let mut websocket_sink = input_report . into_value ();
 
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }
 
@@ -142,7 +142,7 @@ pub async fn websocket_source_with_pings <OF, OS, S>
 	ping_interval: Duration,
 	ping_timeout: Duration
 )
--> WithStatus
+-> ExitStatus
 where
 	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
@@ -176,15 +176,15 @@ where
 
 	if output_report . status_spurious () || keepalive_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		let (mut websocket_sink, _) = keepalive_report . split ();
+		let mut websocket_sink = keepalive_report . into_value ();
 
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }
 
@@ -196,7 +196,7 @@ pub async fn websocket_source <OF, OS, S>
 	outputs: output! (OS <- OF::External),
 	websocket: WebSocketStream <S>
 )
--> WithStatus
+-> ExitStatus
 where
 	OF: OutputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
@@ -210,13 +210,13 @@ where
 
 	if output_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }
 
@@ -230,7 +230,7 @@ pub async fn websocket_sink_with_pings <IF, IS, S>
 	ping_interval: Duration,
 	ping_timeout: Duration
 )
--> WithStatus
+-> ExitStatus
 where
 	IF: InputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
@@ -264,15 +264,15 @@ where
 
 	if input_report . status_spurious () || keepalive_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		let (mut websocket_sink, _) = input_report . split ();
+		let mut websocket_sink = input_report . into_value ();
 
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }
 
@@ -284,7 +284,7 @@ pub async fn websocket_sink <IF, IS, S>
 	inputs: input! (IS -> impl Into <IF::Intermediate>),
 	websocket: WebSocketStream <S>
 )
--> WithStatus
+-> ExitStatus
 where
 	IF: InputFormat + Send,
 	S: AsyncRead + AsyncWrite + Unpin + Debug
@@ -304,14 +304,14 @@ where
 
 	if input_report . status_spurious () || output_report . status_spurious ()
 	{
-		WithStatus::from (ExitStatus::Spurious)
+		ExitStatus::Spurious
 	}
 	else
 	{
-		let (mut websocket_sink, _) = input_report . split ();
+		let mut websocket_sink = input_report . into_value ();
 
-		send! (websocket_sink, Message::Close (None));
+		let _ = send! (websocket_sink, Message::Close (None));
 
-		WithStatus::from (ExitStatus::Clean)
+		ExitStatus::Clean
 	}
 }

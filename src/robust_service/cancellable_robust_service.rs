@@ -4,8 +4,8 @@ use std::pin::{Pin, pin};
 use tokio::sync::watch;
 use tokio::time::{Duration, sleep};
 
-use crate::{service, select, event_loop};
-use crate::exit_status::{ServiceExitStatus, AlwaysClean};
+use crate::{service, event_loop};
+use crate::exit_status::ServiceExitStatus;
 use crate::service_handle::{ServiceHandle, CancellableServiceHandle};
 use crate::service_state::ServiceState;
 
@@ -34,7 +34,7 @@ where
 	C: Future <Output = CancellableServiceHandle <T>>,
 	T: Default + ServiceExitStatus + Unpin
 {
-	select!
+	tokio::select!
 	{
 		_ = &mut *service_handle => replace_down_service
 		(
@@ -77,7 +77,7 @@ where
 	C: Future <Output = CancellableServiceHandle <T>>,
 	T: Default + ServiceExitStatus + Unpin
 {
-	select!
+	tokio::select!
 	{
 		_ = &mut *service_handle => replace_down_service_with_status_reporting
 		(
@@ -100,21 +100,21 @@ where
 
 pub trait CancellableRobustService
 {
-	fn into_robust_service (self) -> CancellableServiceHandle <AlwaysClean>;
+	fn into_robust_service (self) -> CancellableServiceHandle <()>;
 
 	fn into_robust_service_with_preemptive_replacement
 	(
 		self,
 		replacement_interval: Duration
 	)
-	-> CancellableServiceHandle <AlwaysClean>;
+	-> CancellableServiceHandle <()>;
 
 	fn into_robust_service_with_status_reporting
 	(
 		self,
 		status_sender: watch::Sender <ServiceState>
 	)
-	-> CancellableServiceHandle <AlwaysClean>;
+	-> CancellableServiceHandle <()>;
 
 	fn into_robust_service_with_preemptive_replacement_and_status_reporting
 	(
@@ -122,24 +122,27 @@ pub trait CancellableRobustService
 		replacement_interval: Duration,
 		status_sender: watch::Sender <ServiceState>
 	)
-	-> CancellableServiceHandle <AlwaysClean>;
+	-> CancellableServiceHandle <()>;
 }
 
 impl <T> CancellableRobustService for T
 where T: CancellableFallibleServiceFactory + Send + 'static
 {
 	#[service]
-	async fn into_robust_service (mut self) -> AlwaysClean
+	async fn into_robust_service (mut self)
 	{
 		let mut service_handle = self . construct () . await;
 
-		event_loop!
+		loop
 		{
-			_ = &mut service_handle => replace_down_service
+			(&mut service_handle) . await;
+
+			replace_down_service
 			(
 				pin! (self . construct ()),
 				&mut service_handle
-			) . await
+			)
+				. await;
 		}
 	}
 
@@ -149,7 +152,6 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 		mut self,
 		replacement_interval: Duration
 	)
-	-> AlwaysClean
 	{
 		let mut service_handle = self . construct () . await;
 
@@ -174,25 +176,23 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 		mut self,
 		mut status_sender: watch::Sender <ServiceState>
 	)
-	-> AlwaysClean
 	{
 		let mut service_handle = self . construct () . await;
 
 		status_sender . send_replace (ServiceState::Up);
 
-		event_loop!
+		loop
 		{
-			_ = &mut service_handle =>
-			{
-				status_sender . send_replace (ServiceState::Down);
+			(&mut service_handle) . await;
 
-				replace_down_service_with_status_reporting
-				(
-					pin! (self . construct ()),
-					&mut service_handle,
-					&mut status_sender
-				) . await
-			}
+			status_sender . send_replace (ServiceState::Down);
+
+			replace_down_service_with_status_reporting
+			(
+				pin! (self . construct ()),
+				&mut service_handle,
+				&mut status_sender
+			) . await;
 		}
 	}
 
@@ -203,7 +203,6 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 		replacement_interval: Duration,
 		mut status_sender: watch::Sender <ServiceState>
 	)
-	-> AlwaysClean
 	{
 		let mut service_handle = self . construct () . await;
 
@@ -220,14 +219,17 @@ where T: CancellableFallibleServiceFactory + Send + 'static
 					pin! (self . construct ()),
 					&mut service_handle,
 					&mut status_sender
-				) . await
+				) . await;
 			},
-			_ = sleep (replacement_interval) => replace_service_with_status_reporting
-			(
-				pin! (self . construct ()),
-				&mut service_handle,
-				&mut status_sender
-			) . await
+			_ = sleep (replacement_interval) =>
+			{
+				replace_service_with_status_reporting
+				(
+					pin! (self . construct ()),
+					&mut service_handle,
+					&mut status_sender
+				) . await;
+			}
 		}
 	}
 }

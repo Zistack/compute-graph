@@ -1,14 +1,11 @@
 use compute_graph::service;
-use compute_graph::exit_status::AlwaysClean;
 use compute_graph::service_handle::ServiceHandle;
 use tokio::time::{error::Elapsed, Duration, sleep, timeout};
 
 #[service (shutdown = shutdown)]
-async fn must_be_shut_down () -> AlwaysClean
+async fn must_be_shut_down ()
 {
 	let _ = shutdown . await;
-
-	AlwaysClean::new (())
 }
 
 #[tokio::main]
@@ -27,11 +24,9 @@ async fn shutdown_service () -> Result <(), Elapsed>
 }
 
 #[service]
-async fn may_be_cancelled () -> AlwaysClean
+async fn may_be_cancelled ()
 {
 	sleep (Duration::from_millis (100)) . await;
-
-	AlwaysClean::new (())
 }
 
 #[tokio::main]

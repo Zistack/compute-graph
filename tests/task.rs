@@ -1,3 +1,5 @@
+use core::pin::pin;
+
 use compute_graph::task;
 use compute_graph::task_handle::TaskHandle;
 use tokio::select;
@@ -14,11 +16,11 @@ async fn answer_cancellable () -> Option <u32>
 #[test]
 async fn get_answer_cancellable ()
 {
-	let mut answer_handle = answer_cancellable ();
-	answer_handle . abort ();
+	let mut answer_handle = pin! (answer_cancellable ());
+	answer_handle . as_mut () . abort ();
 	assert_eq! (answer_handle . await, None);
 
-	let answer_handle = answer_cancellable ();
+	let answer_handle = pin! (answer_cancellable ());
 	assert_eq! (answer_handle . await, Some (42));
 }
 
@@ -33,11 +35,11 @@ async fn answer_cancellable_forking () -> Option <u32>
 #[test]
 async fn get_answer_cancellable_forking ()
 {
-	let mut answer_handle = answer_cancellable_forking ();
-	answer_handle . abort ();
+	let mut answer_handle = pin! (answer_cancellable_forking ());
+	answer_handle . as_mut () . abort ();
 	assert_eq! (answer_handle . await, None);
 
-	let answer_handle = answer_cancellable_forking ();
+	let answer_handle = pin! (answer_cancellable_forking ());
 	assert_eq! (answer_handle . await, Some (42));
 }
 
@@ -55,11 +57,11 @@ async fn answer_signallable () -> Option <u32>
 #[test]
 async fn get_answer_signallable ()
 {
-	let mut answer_handle = answer_signallable ();
-	answer_handle . abort ();
+	let mut answer_handle = pin! (answer_signallable ());
+	answer_handle . as_mut () . abort ();
 	assert_eq! (answer_handle . await, None);
 
-	let answer_handle = answer_signallable ();
+	let answer_handle = pin! (answer_signallable ());
 	assert_eq! (answer_handle . await, Some (42));
 }
 
@@ -77,10 +79,10 @@ async fn answer_signallable_forking () -> Option <u32>
 #[test]
 async fn get_answer_signallable_forking ()
 {
-	let mut answer_handle = answer_signallable_forking ();
-	answer_handle . abort ();
+	let mut answer_handle = pin! (answer_signallable_forking ());
+	answer_handle . as_mut () . abort ();
 	assert_eq! (answer_handle . await, None);
 
-	let answer_handle = answer_signallable_forking ();
+	let answer_handle = pin! (answer_signallable_forking ());
 	assert_eq! (answer_handle . await, Some (42));
 }

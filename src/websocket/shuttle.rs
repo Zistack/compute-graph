@@ -3,8 +3,16 @@ use tracing::{Level, event};
 use tungstenite::Message;
 use tungstenite::error::Result;
 
-use crate::{expand_streams, service, event_loop_fallible, send};
-use crate::exit_status::{ExitStatus, WithStatus, ShouldTerminateWithStatus};
+use crate::{
+	expand_streams,
+	service,
+	event_loop_fallible,
+	check_break,
+	feed,
+	flush,
+	send
+};
+use crate::exit_status::{ExitStatus, WithStatus};
 
 use super::io_format::{InputFormat, OutputFormat};
 
@@ -22,24 +30,22 @@ pub async fn shuttle_input_with_pings <F, IS, PS, WS>
 -> WithStatus <WS>
 where F: InputFormat
 {
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ExitStatus::Clean,
+		?&mut shutdown,
 		ping_bytess -> ping_bytes =>
-			send! (websocket, Message::Ping (ping_bytes)),
-		inputs -> input =>
+			check_break! (send! (websocket?, Message::Ping (ping_bytes))),
+		inputs -> input.. =>
 		{
 			if let Some (message) = F::convert (input . into ())
 			{
-				send! (websocket?, message)
-			}
-			else
-			{
-				ShouldTerminateWithStatus::from (None)
+				check_break! (feed! (websocket?, message));
 			}
 		}
-	}
-		. with_value (websocket)
+		then check_break! (flush! (websocket?))
+	};
+
+	WithStatus::new (websocket, status)
 }
 
 #[expand_streams]
@@ -53,22 +59,20 @@ pub async fn shuttle_input <F, IS, WS>
 -> WithStatus <WS>
 where F: InputFormat
 {
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ExitStatus::Clean,
-		inputs -> input =>
+		?&mut shutdown,
+		inputs -> input.. =>
 		{
 			if let Some (message) = F::convert (input . into ())
 			{
-				send! (websocket?, message)
-			}
-			else
-			{
-				ShouldTerminateWithStatus::from (None)
+				check_break! (feed! (websocket?, message))
 			}
 		}
-	}
-		. with_value (websocket)
+		then check_break! (flush! (websocket?))
+	};
+
+	WithStatus::new (websocket, status)
 }
 
 #[expand_streams]
@@ -83,10 +87,10 @@ pub async fn shuttle_output_with_pongs <F, WS, OS, PS>
 -> WithStatus <WS>
 where F: OutputFormat
 {
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ExitStatus::Clean,
-		websocket -> message? => match message
+		?&mut shutdown,
+		websocket? -> message => match message
 		{
 			Err (ws_error) =>
 			{
@@ -97,32 +101,35 @@ where F: OutputFormat
 					"websocket connection encountered an error"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			}
 			Ok (Message::Text (utf8_bytes)) =>
 			{
 				if let Some (output) = F::convert_text (utf8_bytes)
 				{
-					send! (outputs, output) . into ()
-				}
-				else
-				{
-					ShouldTerminateWithStatus::from (None)
+					check_break!
+					(
+						send! (outputs, output)
+							. map_break (|_| ExitStatus::Clean)
+					);
 				}
 			},
 			Ok (Message::Binary (bytes)) =>
 			{
 				if let Some (output) = F::convert_binary (bytes)
 				{
-					send! (outputs, output) . into ()
-				}
-				else
-				{
-					ShouldTerminateWithStatus::from (None)
+					check_break!
+					(
+						send! (outputs, output)
+							. map_break (|_| ExitStatus::Clean)
+					);
 				}
 			},
-			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
-			Ok (Message::Pong (bytes)) => send! (pong_bytess, bytes) . into (),
+			Ok (Message::Ping (_)) => (),
+			Ok (Message::Pong (bytes)) => check_break!
+			(
+				send! (pong_bytess, bytes) . map_break (|_| ExitStatus::Clean)
+			),
 			Ok (Message::Close (close_frame)) =>
 			{
 				event!
@@ -132,15 +139,16 @@ where F: OutputFormat
 					"websocket connection was closed before shutdown"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			},
 			Ok (Message::Frame (_)) => unreachable!
 			(
 				"websocket stream returned a raw frame"
 			)
 		}
-	}
-		. with_value (websocket)
+	};
+
+	WithStatus::new (websocket, status)
 }
 
 #[expand_streams]
@@ -154,10 +162,10 @@ pub async fn shuttle_output <F, WS, OS>
 -> WithStatus <WS>
 where F: OutputFormat
 {
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ExitStatus::Clean,
-		websocket -> message? => match message
+		?&mut shutdown,
+		websocket? -> message => match message
 		{
 			Err (ws_error) =>
 			{
@@ -168,42 +176,37 @@ where F: OutputFormat
 					"websocket connection encountered an error"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			}
 			Ok (Message::Text (utf8_bytes)) =>
 			{
 				if let Some (output) = F::convert_text (utf8_bytes)
 				{
-					send! (outputs, output) . into ()
-				}
-				else
-				{
-					ShouldTerminateWithStatus::from (None)
+					check_break!
+					(
+						send! (outputs, output)
+							. map_break (|_| ExitStatus::Clean)
+					);
 				}
 			},
 			Ok (Message::Binary (bytes)) =>
 			{
 				if let Some (output) = F::convert_binary (bytes)
 				{
-					send! (outputs, output) . into ()
-				}
-				else
-				{
-					ShouldTerminateWithStatus::from (None)
+					check_break!
+					(
+						send! (outputs, output)
+							. map_break (|_| ExitStatus::Clean)
+					);
 				}
 			},
-			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
-			Ok (Message::Pong (bytes)) =>
-			{
-				event!
-				(
-					Level::WARN,
-					pong_bytes = ?bytes,
-					"received unsolicited pong frame"
-				);
-
-				ShouldTerminateWithStatus::from (None)
-			},
+			Ok (Message::Ping (_)) => (),
+			Ok (Message::Pong (bytes)) => event!
+			(
+				Level::WARN,
+				pong_bytes = ?bytes,
+				"received unsolicited pong frame"
+			),
 			Ok (Message::Close (close_frame)) =>
 			{
 				event!
@@ -213,15 +216,16 @@ where F: OutputFormat
 					"websocket connection was closed before shutdown"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			},
 			Ok (Message::Frame (_)) => unreachable!
 			(
 				"websocket stream returned a raw frame"
 			)
 		}
-	}
-		. with_value (websocket)
+	};
+
+	WithStatus::new (websocket, status)
 }
 
 #[expand_streams]
@@ -232,10 +236,10 @@ pub async fn drain_output <WS>
 )
 -> WithStatus <WS>
 {
-	event_loop_fallible!
+	let status = event_loop_fallible!
 	{
-		_ = &mut shutdown => ExitStatus::Clean,
-		websocket -> message? => match message
+		?&mut shutdown,
+		websocket? -> message => match message
 		{
 			Err (ws_error) =>
 			{
@@ -246,42 +250,27 @@ pub async fn drain_output <WS>
 					"websocket connection encountered an error"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			},
-			Ok (Message::Text (utf8_bytes)) =>
-			{
-				event!
-				(
-					Level::INFO,
-					?utf8_bytes,
-					"received superfluous text message"
-				);
-
-				ShouldTerminateWithStatus::from (None)
-			},
-			Ok (Message::Binary (bytes)) =>
-			{
-				event!
-				(
-					Level::INFO,
-					?bytes,
-					"received superfluous binary message"
-				);
-
-				ShouldTerminateWithStatus::from (None)
-			},
-			Ok (Message::Ping (_)) => ShouldTerminateWithStatus::from (None),
-			Ok (Message::Pong (bytes)) =>
-			{
-				event!
-				(
-					Level::WARN,
-					?bytes,
-					"received unsolicited pong frame"
-				);
-
-				ShouldTerminateWithStatus::from (None)
-			},
+			Ok (Message::Text (utf8_bytes)) => event!
+			(
+				Level::INFO,
+				?utf8_bytes,
+				"received superfluous text message"
+			),
+			Ok (Message::Binary (bytes)) => event!
+			(
+				Level::INFO,
+				?bytes,
+				"received superfluous binary message"
+			),
+			Ok (Message::Ping (_)) => (),
+			Ok (Message::Pong (bytes)) => event!
+			(
+				Level::WARN,
+				?bytes,
+				"received unsolicited pong frame"
+			),
 			Ok (Message::Close (close_frame)) =>
 			{
 				event!
@@ -291,13 +280,14 @@ pub async fn drain_output <WS>
 					"websocket connection was closed before shutdown"
 				);
 
-				ShouldTerminateWithStatus::from (ExitStatus::Spurious)
+				break ExitStatus::Spurious;
 			},
 			Ok (Message::Frame (_)) => unreachable!
 			(
 				"websocket stream returned a raw frame"
 			)
 		}
-	}
-		. with_value (websocket)
+	};
+
+	WithStatus::new (websocket, status)
 }

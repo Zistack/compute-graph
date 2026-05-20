@@ -4,12 +4,8 @@ pub use always_clean::AlwaysClean;
 mod with_status;
 pub use with_status::WithStatus;
 
-mod should_terminate_clean;
-pub use should_terminate_clean::ShouldTerminateClean;
-
-mod should_terminate_with_status;
-pub use should_terminate_with_status::ShouldTerminateWithStatus;
-
+// Normally, we'd use the vocabulary 'clean' and 'dirty'.  Should I be doing
+// that?
 #[derive (Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ExitStatus
 {
@@ -72,7 +68,24 @@ pub trait ServiceExitStatus
 	}
 }
 
-pub trait ServiceShouldTerminate
+impl ServiceExitStatus for ()
 {
-	fn should_terminate (&self) -> bool;
+	type Value = ();
+
+	fn exit_status (&self) -> ExitStatus { ExitStatus::Clean }
+
+	fn status_clean (&self) -> bool { true }
+
+	fn status_spurious (&self) -> bool { false }
+}
+
+impl ServiceExitStatus for ExitStatus
+{
+	type Value = ();
+
+	fn exit_status (&self) -> ExitStatus { *self }
+
+	fn status_clean (&self) -> bool { self . is_clean () }
+
+	fn status_spurious (&self) -> bool { self . is_spurious () }
 }
